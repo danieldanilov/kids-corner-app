@@ -44,6 +44,8 @@
   .screen .tag { position:absolute; left:8px; top:6px; font-size:12px; color:#fff; opacity:.7; z-index:2; pointer-events:none; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  code { font: 13px ui-monospace, Menlo, monospace; background: var(--chip); padding: 1px 5px; border-radius: 6px; word-break: break-all; }
+  ol.hint li { margin: 6px 0; }
   pre#summary { font: 12px/1.35 ui-monospace, Menlo, monospace; background: var(--bg); border-radius: 10px; padding: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
@@ -69,9 +71,14 @@
   </section>
 
   <section id="s-settings"><h2>2. Settings <span class="status">waiting</span></h2>
-    <p class="hint">Saved only on this device (IndexedDB), never in the address or anywhere else. Add this page to the Home Screen first if you want to test the installed app, then enter them there: the Home Screen copy keeps its own storage.</p>
-    <label for="cfg">Torrentio address (the manifest URL from Stremio's Torrentio TB addon)</label>
-    <textarea id="cfg" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://torrentio.strem.fun/.../manifest.json"></textarea>
+    <p class="hint">Two things are needed once. They stay only on this iPad (in this page's own storage), never in the address bar or anywhere else.</p>
+    <ol class="hint">
+      <li><b>Put this page on the Home Screen first</b> (April's app will run from there): in Safari tap the Share button (the square with an arrow), then <b>Add to Home Screen</b>, then <b>Add</b>. Open <b>KC Testbed</b> from the Home Screen and do the rest there. Safari and the Home Screen copy keep separate settings and separate results, so if you also test in Safari, enter the settings there too and copy results from both.</li>
+      <li><b>Torrentio address.</b> In Stremio (on the Mac or here): <b>Addons</b>, find <b>Torrentio TB</b>, tap its share or copy-link button, and paste the link below. It starts with <code>https://torrentio.strem.fun/</code> and ends with <code>manifest.json</code>. No Stremio to hand: open <code>torrentio.strem.fun/configure</code>, set it up with the TorBox key, and copy the install link it shows.</li>
+      <li><b>App token.</b> On the Mac, open Terminal and run:<br><code>security find-generic-password -s kidscorner-app-token -w | pbcopy</code><br>It copies the token without showing it. With the Mac and iPad on the same Apple ID, Wi-Fi and Bluetooth on (Universal Clipboard), tap the token field below and choose <b>Paste</b>.</li>
+    </ol>
+    <label for="cfg">Torrentio address</label>
+    <input id="cfg" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://torrentio.strem.fun/.../manifest.json">
     <label for="tok">App token</label>
     <input id="tok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
     <div class="row"><button class="primary" id="save">Save</button><button id="clear">Forget them</button></div>
@@ -122,6 +129,11 @@
       <p class="hint">Start a video (6a), then for each part: tap Arm, tap that part of the player within 10 seconds, come back to this app if it took you out. The page notices if you left. The YouTube logo is allowed to lead out; nothing else should.</p>
       <table id="exits"></table>
       <div class="log" data-log="yt-exits"></div></div>
+    <div class="sub"><h3>6g. Ways out while YouTube's own screens show <span class="status" data-sub="yt-screens">waiting</span></h3>
+      <p class="hint">The player shows YouTube's own screen when the iPad refuses to start a video by itself or when an ad plays. Tap <b>Show YouTube's start screen</b>, then Arm and tap each part it shows. If an ad is playing (after 6a or 6d), do the ad rows too. Come back to this app if anything takes you out.</p>
+      <div class="row"><button class="primary" data-run="yt-screens">Show YouTube's start screen</button></div>
+      <table id="exits2"></table>
+      <div class="log" data-log="yt-screens"></div></div>
   </section>
 
   <section id="s-audio"><h2>7. Audio with the screen locked <span class="status">waiting</span></h2>

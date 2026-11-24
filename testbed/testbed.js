@@ -49,7 +49,7 @@ function setStatus(id, status) {
   rollup();
 }
 function rollup() {
-  for (const [sec, ids] of Object.entries({ 's-direct': ['direct-sample', 'direct-live'], 's-remux': ['remux-sample', 'remux-eac3', 'remux-hevc', 'remux-mp3', 'remux-live', 'remux-live-ru'], 's-yt': ['yt-start', 'yt-pause', 'yt-seek', 'yt-skip', 'yt-end', 'yt-exits'] })) {
+  for (const [sec, ids] of Object.entries({ 's-direct': ['direct-sample', 'direct-live'], 's-remux': ['remux-sample', 'remux-eac3', 'remux-hevc', 'remux-mp3', 'remux-live', 'remux-live-ru'], 's-yt': ['yt-start', 'yt-pause', 'yt-seek', 'yt-skip', 'yt-end', 'yt-exits', 'yt-screens'] })) {
     const st = ids.map(i => results.steps[i]?.status).filter(Boolean);
     const el = document.querySelector(`#${sec} h2 .status`);
     const v = !st.length ? 'waiting' : st.includes('fail') ? 'fail' : st.includes('run') ? 'run' : st.length === ids.length && st.every(s => s === 'pass') ? 'pass' : 'warn';
@@ -289,6 +289,14 @@ const RUNS = {
     log(id, `ended event: ${!!e}, player hidden at the end: ${hidden}. Look at the YouTube box: it should be empty, with no suggestions.`);
     record(id, e && hidden ? 'pass' : 'fail', { endedEvent: !!e, hiddenAtEnd: hidden });
   },
+  async 'yt-screens'() {
+    const id = 'yt-screens'; clearLog(id); record(id, 'run');
+    const s = startSession({ kind: 'youtube', ytId: YT_IDS[0] }, { ytCueOnly: true });
+    const r = await waitFor(s, ['needs-tap', 'ready', 'failed-all'], 15000);
+    if (r?.t === 'needs-tap') { log(id, "YouTube's start screen is showing. Arm each row and tap that part."); return record(id, 'warn', { startScreenShown: true, checked: 0, of: SCREEN_EXITS.length }); }
+    log(id, 'the start screen did not show: ' + (r?.t || 'timeout'));
+    record(id, 'fail', { startScreenShown: false, outcome: r?.t || 'timeout' });
+  },
   'audio-stop': () => { if (session) session.stop(); },
   async 'audio-lock'() {
     const id = 'audio-lock'; clearLog(id); record(id, 'run');
@@ -323,33 +331,47 @@ const EXITS = [
   ['watch', '"Watch on YouTube" or share / watch later buttons'], ['video-tap', 'A tap on the picture itself'], ['long-press', 'A long press on the picture'],
   ['end', 'Anything shown at the very end (run 6e first)'],
 ];
-function renderExits() {
-  $('#exits').innerHTML = EXITS.map(([k, label]) => `<tr data-exit="${k}"><td>${label}</td><td><button data-arm="${k}">Arm</button></td><td class="res">${results.steps['exit-' + k]?.outcome || ''}</td></tr>`).join('');
-  for (const b of document.querySelectorAll('[data-arm]')) b.onclick = () => armExit(b.dataset.arm);
+const SCREEN_EXITS = [
+  ['start-title', 'Start screen: the video title'], ['start-avatar', 'Start screen: the channel picture'],
+  ['start-watch', 'Start screen: "Watch on YouTube", share or "More videos"'], ['start-play', 'Start screen: the big play button (should just play)'],
+  ['ad-link', 'Ad: the advertiser name or "Visit advertiser" link'], ['ad-title', 'Ad: the ad title or its channel'],
+  ['ad-info', 'Ad: the (i) or "Why this ad" button'], ['ad-skip', 'Ad: the Skip button (should just skip)'],
+];
+const STAYS = new Set(['logo', 'start-play', 'ad-skip']); // allowed: the logo may lead out; play and skip should act inside
+function renderExits(tableSel, list, summaryId) {
+  $(tableSel).innerHTML = list.map(([k, label]) => `<tr data-exit="${k}"><td>${label}</td><td><button data-arm="${k}">Arm</button></td><td class="res">${results.steps['exit-' + k]?.outcome || ''}</td></tr>`).join('');
+  for (const b of $(tableSel).querySelectorAll('[data-arm]')) b.onclick = () => armExit(b.dataset.arm, list, summaryId);
 }
-function armExit(k) {
+function armExit(k, list, summaryId) {
   const row = document.querySelector(`[data-exit="${k}"] .res`);
   row.textContent = 'armed: tap it now (10 s)';
   let left = false;
   const onHide = () => { if (document.visibilityState === 'hidden') left = true; };
   const onPageHide = () => { left = true; };
   document.addEventListener('visibilitychange', onHide); addEventListener('pagehide', onPageHide);
-  const visibleBefore = $('#yt').style.visibility;
   setTimeout(() => {
     document.removeEventListener('visibilitychange', onHide); removeEventListener('pagehide', onPageHide);
-    if (left) return saveExit(k, 'left the app');
+    if (left) return saveExit(k, 'left the app', list, summaryId);
     row.innerHTML = '<button>Not there</button> <button>Nothing</button> <button>Changed inside the player</button>';
     const [a, b, c] = row.querySelectorAll('button');
-    a.onclick = () => saveExit(k, 'not visible'); b.onclick = () => saveExit(k, 'nothing happened'); c.onclick = () => saveExit(k, 'changed inside the player');
+    a.onclick = () => saveExit(k, 'not visible', list, summaryId); b.onclick = () => saveExit(k, 'nothing happened', list, summaryId);
+    c.onclick = () => saveExit(k, 'changed inside the player', list, summaryId);
   }, 10000);
-  void visibleBefore;
 }
-function saveExit(k, outcome) {
-  const okOut = k === 'logo' ? true : outcome !== 'left the app' && outcome !== 'changed inside the player';
+function saveExit(k, outcome, list, summaryId) {
+  const leads = outcome === 'left the app' || (outcome === 'changed inside the player' && !STAYS.has(k));
+  const okOut = k === 'logo' || !leads;
   record('exit-' + k, okOut ? 'pass' : 'fail', { outcome });
   document.querySelector(`[data-exit="${k}"] .res`).textContent = outcome;
-  const done = EXITS.map(([x]) => results.steps['exit-' + x]).filter(Boolean);
-  record('yt-exits', done.some(d => d.status === 'fail') ? 'fail' : done.length === EXITS.length ? 'pass' : 'warn', { checked: done.length, of: EXITS.length });
+  const done = list.map(([x]) => results.steps['exit-' + x]).filter(Boolean);
+  const out = list.filter(([x]) => results.steps['exit-' + x]?.status === 'fail').map(([, l]) => l);
+  record(summaryId, out.length ? 'fail' : done.length === list.length ? 'pass' : 'warn', { checked: done.length, of: list.length, waysOut: out });
+  if (summaryId === 'yt-screens') {
+    const ad = list.filter(([x]) => x.startsWith('ad-') && results.steps['exit-' + x]?.outcome === 'left the app').length;
+    clearLog('yt-screens');
+    log('yt-screens', out.length ? `Leads out of the app: ${out.join('; ')}.` : 'Nothing checked so far leads out of the app.');
+    if (ad) log('yt-screens', 'Decision for Daniel: ads can lead out. Either show ads with their links (YouTube\'s terms) or keep the player hidden during ads, so she hears the ad behind the loading toy and cannot tap it (against the terms).');
+  }
 }
 
 // ---------- wiring ----------
@@ -369,7 +391,8 @@ $('#reset').onclick = async () => { results = { env: results.env, steps: {} }; a
 (async () => {
   await loadResults();
   await showEnv();
-  renderExits();
+  renderExits('#exits', EXITS, 'yt-exits');
+  renderExits('#exits2', SCREEN_EXITS, 'yt-screens');
   const s = await getSecrets();
   if (s.torrentioConfig && s.appToken) { $('#cfg').placeholder = 'saved on this device'; $('#tok').placeholder = 'saved on this device'; record('settings', 'pass', { saved: true }); }
   try { await navigator.storage?.persist?.(); } catch { /* fine */ }

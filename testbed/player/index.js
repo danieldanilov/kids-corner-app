@@ -106,8 +106,12 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   async function listCandidates(item, secrets, emit) {
     emit('progress', { fraction: null, stage: 'list' });
     const it = { ...item, lang: item.lang || lang };
-    if (!(it.runtimeMin > 0) || !it.year) {
-      try { const m = await fetchCinemeta(it); it.runtimeMin ||= m.runtimeMin; it.year ||= m.year; } catch { /* keep */ }
+    const needSeries = it.type === 'series' && (!it.seasonCount || !it.episodeName);
+    if (!(it.runtimeMin > 0) || !it.year || needSeries) {
+      try {
+        const m = await fetchCinemeta(it);
+        it.runtimeMin ||= m.runtimeMin; it.year ||= m.year; it.seasonCount ||= m.seasonCount; it.episodeName ||= m.episodeName;
+      } catch { /* keep: the guards then treat the unknowns strictly */ }
     }
     const streams = await fetchStreams(secrets.torrentioConfig, it);
     const { ranked, skipped } = rankStreams(streams, it, caps(), learned.snapshot());
@@ -209,7 +213,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   }
 
   // ---- session ----
-  function play(item, { startAt = 0, keepAwake = true } = {}) {
+  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false } = {}) {
     if (current) current._stop('replaced');
     if (!unlocked) unlock();
     const s = new EventTarget();
@@ -260,7 +264,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     current = s;
 
     const kind = item?.kind;
-    if (kind === 'youtube') playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f) });
+    if (kind === 'youtube') playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly });
     else if (kind === 'audio') playAudio(item, startAt, keepAwake, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f) });
     else if (kind === 'torbox' || kind === 'file') playTorbox(item, startAt, s, { emit, rep, markReady, finish, mark, cleanup: f => cleanup.push(f), isStopped: () => stopped });
     else queueMicrotask(() => { rep.failures.push('bad_item'); finish('failed-all', ['bad_item']); });
@@ -307,6 +311,18 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       for (let i = 0; i < b.length; i++) if (b.start(i) <= t + 0.5 && b.end(i) >= t) return b.end(i);
       return null;
     };
+    // Frozen-playhead watchdog: WebKit occasionally reports playing with data ahead while the clock stands
+    // still (seen after a resume point). One still second with data ahead: nudge it.
+    let lastT = -1, still = 0;
+    const freeze = setInterval(() => {
+      if (!media || video.paused || video.ended || video.readyState < 3) { still = 0; lastT = video.currentTime; return; }
+      const t = video.currentTime, end = bufferedEnd();
+      if (Math.abs(t - lastT) < 0.02 && end != null && end - t > 1) {
+        if (++still >= 2) { still = 0; rep.nudges = (rep.nudges || 0) + 1; try { video.currentTime = t + 0.01; } catch { /* ignore */ } video.play().catch(() => {}); }
+      } else still = 0;
+      lastT = t;
+    }, 500);
+    cleanup(() => clearInterval(freeze));
     const listeners = { timeupdate: onTime, waiting: onWaiting, playing: onPlaying, pause: onPause, ended: onEnded, progress: onProgress };
     for (const [k, f] of Object.entries(listeners)) video.addEventListener(k, f);
     const teardownAll = () => {
@@ -370,6 +386,8 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         return { kind: 'remux', failed: Promise.resolve(false), teardown() {} };
       }
       if (o.debug) globalThis.__kcSink = sink;
+      // Seek before any data: the first fragment then satisfies a pending seek, rather than being seeked into.
+      if (at > 0) { try { video.currentTime = at; } catch { /* set again after the first append */ } }
       const pushDemand = () => {
         if (!runId) return;
         const t = video.currentTime;
@@ -510,7 +528,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
 
   // ---- YouTube ----
   function playYouTube(item, startAt, s, ctx) {
-    const { emit, rep, markReady, finish, cleanup } = ctx;
+    const { emit, rep, markReady, finish, cleanup, cueOnly } = ctx;
     rep.path = 'youtube';
     if (!yt) { rep.failures.push('no_yt_container'); queueMicrotask(() => finish('failed-all', ['no_yt_container'])); return; }
     let started = false, paused = false, endedByUs = false, stopping = false, lastSeek = null, seekRetried = false;
@@ -552,12 +570,15 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       },
       onError(code) {
         yt.show(false); clearT();
-        rep.failures.push('yt_' + code);
-        finish('failed-all', ['yt_' + code]);
+        // 153: YouTube refuses an embed that sends no Referer, which a no-referrer policy on the page causes.
+        const noRef = /no-referrer/i.test(document.querySelector('meta[name="referrer"]')?.content || '');
+        const reason = code === 153 && noRef ? 'yt_153_referrer_policy' : 'yt_' + code;
+        rep.failures.push(reason);
+        finish('failed-all', [reason]);
       },
     });
     emit('progress', { fraction: null, stage: 'buffer' });
-    const sync = yt.load(item.ytId || item.videoId, startAt || 0);
+    const sync = cueOnly ? yt.cue(item.ytId || item.videoId) : yt.load(item.ytId || item.videoId, startAt || 0);
     if (!sync) rep.ytLoadedLate = true;
     // If the video hasn't reached PLAYING after a moment, show the player: either iOS refused the programmatic
     // start (she taps YouTube's play button) or YouTube is showing a pre-roll ad, which the API reports as
@@ -575,7 +596,8 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     };
     needsTapT = setTimeout(checkTap, o.ytNeedsTapMs + (sync ? 0 : 3000));
     s._ctl.pause = () => { yt.show(false); yt.pause(); };
-    s._ctl.resume = () => { endedByUs = false; yt.play(); };
+    // After our own end nothing may play again: the end panel would be one frame away.
+    s._ctl.resume = () => { if (endedByUs) return; yt.play(); };
     s._ctl.seek = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
     cleanup(() => { stopping = true; clearInterval(poll); clearTimeout(needsTapT); clearT(); yt.show(false); yt.pause(); yt.setHandler(null); });
   }

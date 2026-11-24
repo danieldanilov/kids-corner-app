@@ -62,7 +62,14 @@ export async function fetchCinemeta(item, { fetchFn = fetch, timeoutMs = 6000 } 
   if (!r.ok) return {};
   const meta = (await r.json())?.meta || {};
   const year = parseInt(String(meta.year || meta.releaseInfo || ''), 10);
-  return { runtimeMin: parseRuntime(meta.runtime), year: Number.isFinite(year) ? year : null };
+  const videos = Array.isArray(meta.videos) ? meta.videos : [];
+  const seasons = new Set(videos.map(v => +v.season).filter(n => n > 0));
+  const ep = videos.find(v => +v.season === +item.season && +v.episode === +item.episode);
+  return {
+    runtimeMin: parseRuntime(meta.runtime), year: Number.isFinite(year) ? year : null,
+    seasonCount: item.type === 'series' && seasons.size ? seasons.size : null,
+    episodeName: item.type === 'series' ? (ep?.name || ep?.title || null) : null,
+  };
 }
 
 // -> {status:'ok', url, expires} | {status:'skip', reason} | {status:'fatal', reason}

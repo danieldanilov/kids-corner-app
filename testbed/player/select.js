@@ -50,7 +50,7 @@ export function parseEpisode(fn) {
   }
   m = /^(\d{1,2})\.(\d{2})\s/.exec(base);
   if (m) return ep(+m[1], +m[2]);
-  m = /^(\d{2,3})[ ._-]/.exec(base);
+  m = /^(\d{2,3})[ ._-]/.exec(base) || /^(\d{1,3})(?:\.[a-z0-9]{2,4})?$/i.exec(base) || /\s-\s(\d{1,3})\s-\s/.exec(base);
   if (m) return ep(null, +m[1]);
   m = /\b(?:ep|episode)[ ._-]?(\d{1,3})\b/i.exec(base) || /\be(\d{2,3})\b/i.exec(base);
   if (m) return ep(null, +m[1]);
@@ -60,6 +60,35 @@ function ep(season, episode, end) {
   const r = { season, episode };
   if (end != null && +end > episode) r.episodeEnd = +end;
   return r;
+}
+
+// Season from a folder or torrent name; null when absent or when it names a range (S01-S03, Season 1-3).
+export function seasonFrom(text) {
+  if (typeof text !== 'string' || !text) return null;
+  const t = text.replace(/[._]/g, ' ');
+  if (/\bs\d{1,2}\s*[-–~]\s*s?\d{1,2}\b/i.test(t) || /season?s?\s*\d{1,2}\s*[-–~]\s*\d{1,2}/i.test(t)
+    || /сезон[ыа]?[:\s]*\d{1,2}\s*[-–~]\s*\d{1,2}/i.test(t) || /\bs\d{1,2}\s+s\d{1,2}\b/i.test(t)) return null;
+  const m = /\bs(\d{1,2})(?:\s*e\d{1,3})?\b/i.exec(t) || /\bseason\s*(\d{1,2})\b/i.exec(t) || /\b(\d{1,2})(?:st|nd|rd|th)?\s+season\b/i.exec(t)
+    || /сезон[:\s]*(\d{1,2})/i.exec(t) || /(\d{1,2})\s*-?й?\s*сезон/i.exec(t);
+  return m ? +m[1] : null;
+}
+
+const NOISE = /\b(2160p|1440p|1080p|1080i|720p|576p|480p|360p|4k|uhd|fhd|hd|sd|sdtv|hdtv|pdtv|web|webdl|web dl|webrip|web rip|bluray|blu ray|bdrip|brrip|dvdrip|dvd|hdrip|remux|x264|x265|h ?264|h ?265|hevc|avc|aac\d*|ac3|eac3|ddp?\d*|dd\d*|atmos|truehd|dts|flac|opus|mp3|10bit|8bit|hdr\d*|dv|proper|repack|internal|multi\d*|dual|dub|dubbed|eng|english|rus|russian|subs?|dsnp|amzn|nf|hmax|atvp|itunes|ia|complete|uncut|extended|remastered|rip|mkv|mp4|avi)\b/g;
+// What is left of a file's name once episode numbers, quality and release tags and years are removed.
+export function fileTitle(fileBase) {
+  let t = String(fileBase || '').replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ').replace(/-[A-Za-z0-9]+$/, '');
+  t = normalizeName(t.replace(/[._]/g, ' '));
+  t = t.replace(/\bs\d{1,2}\s*e\d{1,3}(\s*e\d{1,3})*\b/g, ' ').replace(/\b\d{1,2}x\d{2,3}\b/g, ' ')
+    .replace(/\b(episode|ep|e|серия|серии|эпизод|часть|part)\s*\d{1,3}\b/g, ' ').replace(/\b\d{1,3}\s*(серия|й)\b/g, ' ')
+    .replace(NOISE, ' ').replace(/\b(19|20)\d{2}\b/g, ' ').replace(/\b\d+\b/g, ' ');
+  return t.replace(/\s+/g, ' ').trim();
+}
+
+function titleMatches(title, episodeName) {
+  const a = transliterate(title), b = transliterate(normalizeName(episodeName || '')).replace(/^the /, '');
+  if (!a || b.length < 3) return false;
+  const a2 = a.replace(/^the /, '');
+  return a2 === b || ` ${a2} `.includes(` ${b} `) || (a2.length >= 3 && ` ${b} `.includes(` ${a2} `));
 }
 
 function flagsOf(t) {
@@ -73,6 +102,9 @@ export function parseStream(s, item = {}) {
   const torrent = lines[0] || '';
   const hinted = typeof s?.behaviorHints?.filename === 'string' ? s.behaviorHints.filename : '';
   const filename = hinted || lines.find(l => MEDIA_EXT.test(l) && !/👤|💾/.test(l)) || torrent;
+  const parts = filename.split(/[\\/]/);
+  const fileBase = parts.pop().replace(MEDIA_EXT, '');
+  const folder = parts.join('/');
   const text = `${torrent} ${filename}`;
   const low = text.toLowerCase();
   const lowNoExt = `${torrent.replace(MEDIA_EXT, '')} ${filename.replace(MEDIA_EXT, '')}`.toLowerCase();
@@ -113,12 +145,16 @@ export function parseStream(s, item = {}) {
 
   const runtimeMin = +item.runtimeMin > 0 ? +item.runtimeMin : null;
   const mbps = sizeMB && runtimeMin ? (sizeMB * 8) / (runtimeMin * 60) : null;
-  const years = [...text.matchAll(/(?:^|[^0-9])(19[3-9]\d|20[0-4]\d)(?![0-9])/g)].map(m => +m[1]);
+  const yearsIn = str => [...str.matchAll(/(?:^|[^0-9])(19[3-9]\d|20[0-4]\d)(?![0-9])/g)].map(m => +m[1]);
+  const years = yearsIn(text);
+  const fileYears = yearsIn(fileBase);
 
   return {
     raw: s, name, filename, torrent, text, url, key, infoHash, fileIdx, sizeMB, mbps, res, container, videoCodec, tenBit,
     dolbyVision, threeD, cam, audioCodec, flags: [...flags], ru, en, enExplicit, foreign, cached, uncached,
-    ep: parseEpisode(filename), torrentEp: parseEpisode(torrent), years,
+    fileBase, folder, fileYears, title: fileTitle(fileBase),
+    ep: parseEpisode(fileBase), torrentEp: parseEpisode(torrent), years,
+    season: parseEpisode(fileBase)?.season ?? seasonFrom(folder) ?? seasonFrom(torrent),
   };
 }
 
@@ -127,18 +163,29 @@ export function hardSkip(c, item = {}, caps = {}) {
   if (!c.url) return 'no_url';
   if (SKIP_CONTAINERS.has(c.container)) return 'container';
   const names = [item.showName, ...(item.altNames || [])].filter(n => typeof n === 'string' && n.trim());
-  if (!nameMatches(c.text, names)) return 'wrong_show';
+  if (item.type === 'series' && c.ep && !(+item.episode >= c.ep.episode && +item.episode <= (c.ep.episodeEnd || c.ep.episode))) return 'wrong_episode';
+  // Show name: from the file's own name. A pack that names the show vouches only for a bare file, or one
+  // whose leftover title is Cinemeta's name for this episode (Boss ruling: never a pack's name alone).
+  const ownName = nameMatches(c.fileBase, names);
+  if (!ownName) {
+    if (item.type !== 'series') return 'wrong_show';
+    if (!nameMatches(c.torrent, names) && !nameMatches(c.folder, names)) return 'wrong_show';
+    if (c.title && !titleMatches(c.title, item.episodeName)) return 'wrong_show';
+  }
+  const hasRuntime = +item.runtimeMin > 0;
+  if (!hasRuntime && !ownName) return 'no_runtime_unverified';
   if (item.type === 'series') {
-    const e = c.ep || (c.torrentEp && !c.torrentEp.episodeEnd ? c.torrentEp : null);
+    const e = c.ep;
     if (!e) return 'episode_unverified';
-    if (e.season != null && item.season != null && e.season !== +item.season) return 'wrong_episode';
-    const want = +item.episode;
-    if (!(want >= e.episode && want <= (e.episodeEnd || e.episode))) return 'wrong_episode';
+    if (c.season != null) { if (item.season != null && c.season !== +item.season) return 'wrong_episode'; }
+    else if (!(+item.seasonCount === 1)) return 'episode_unverified';
     // A file whose years all predate the show is a different show with the same name (Bluey 1976 vs 2018).
     if (item.year && c.years.length && c.years.every(y => y < +item.year - 1)) return 'wrong_year';
-  } else if (item.year && c.years.length && !c.years.some(y => Math.abs(y - +item.year) <= 1)) {
-    return 'wrong_year';
+  } else {
+    if (item.year && c.fileYears.length && !c.fileYears.some(y => Math.abs(y - +item.year) <= 1)) return 'wrong_year';
+    if (!hasRuntime && !(item.year && c.fileYears.some(y => Math.abs(y - +item.year) <= 1))) return 'no_runtime_unverified';
   }
+  if (!hasRuntime && c.sizeMB != null && c.sizeMB > (item.type === 'series' ? 2048 : 12288)) return 'too_big';
   if (['xvid', 'mpeg2', 'vc1'].includes(c.videoCodec)) return 'video_codec';
   if (c.videoCodec === 'av1' && !caps.av1) return 'video_codec';
   if (c.dolbyVision) return 'dolby_vision';

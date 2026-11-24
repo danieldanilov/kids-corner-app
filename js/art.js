@@ -33,9 +33,10 @@ const withClass = (s, cls) => /^<svg class="/.test(s) ? s.replace('<svg class="'
 // Pom, the companion (spec 3). mood: 'day' | 'night' | 'sleep' | 'wave'
 function pomSvg(cls = '') {return `<svg class="pom ${cls}" viewBox="0 0 200 200" aria-label="Pom">
  <g class="pom-b">
-  <path d="M66 82C40 72 18 50 16 22c26 4 48 22 58 50z" fill="#5FBF97" stroke="#3E8F70" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M134 82c26-10 48-32 50-60-26 4-48 22-58 50z" fill="#5FBF97" stroke="#3E8F70" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M62 74C48 62 34 46 26 30M138 74c14-12 28-28 36-44" stroke="#A6E3C6" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <g class="sprout-top"><path d="M100 62C100 48 99 38 102 26" stroke="#3E8F70" stroke-width="7" fill="none" stroke-linecap="round"/>
+   <path d="M102 30C90 12 70 8 58 16c8 17 28 22 44 14z" fill="#5FBF97" stroke="#3E8F70" stroke-width="4" stroke-linejoin="round"/>
+   <path d="M102 27c10-19 30-25 44-17-6 18-26 25-44 17z" fill="#5FBF97" stroke="#3E8F70" stroke-width="4" stroke-linejoin="round"/>
+   <path d="M98 26C88 20 76 17 66 18M106 23c10-7 22-10 32-9" stroke="#A6E3C6" stroke-width="3" fill="none" stroke-linecap="round"/></g>
   <g class="arm-l"><ellipse cx="34" cy="138" rx="14" ry="20" fill="#5FBF97" stroke="#3E8F70" stroke-width="4"/></g>
   <ellipse cx="72" cy="182" rx="20" ry="11" fill="#5FBF97" stroke="#3E8F70" stroke-width="4"/><ellipse cx="128" cy="182" rx="20" ry="11" fill="#5FBF97" stroke="#3E8F70" stroke-width="4"/>
   <ellipse cx="100" cy="120" rx="72" ry="64" fill="#A6E3C6" stroke="#3E8F70" stroke-width="5"/>

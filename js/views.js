@@ -174,6 +174,17 @@ function wireShelf(view, app) {
   };
   shelf.addEventListener('scroll', () => { cancelAnimationFrame(shelf._u); shelf._u = requestAnimationFrame(update); }, { passive: true });
   // Page by whole columns: next starts at the first column cut by the right edge; back ends where this page began.
+  // A trailing spacer lets every column start reach the left edge, so the last page never cuts its first column.
+  let spacer = shelf.querySelector('.shelf-spacer');
+  if (!spacer) { spacer = document.createElement('div'); spacer.className = 'shelf-spacer'; spacer.setAttribute('aria-hidden', 'true'); shelf.appendChild(spacer); }
+  const sizeSpacer = () => {
+    const padR = parseFloat(getComputedStyle(shelf).paddingRight) || 0, gap = parseFloat(getComputedStyle(shelf).columnGap) || 0;
+    const items = [...shelf.children].filter(c => c !== spacer && c.offsetWidth);
+    const lastLeft = Math.max(...items.map(c => c.offsetLeft));
+    const lastWidth = Math.max(...items.filter(c => c.offsetLeft === lastLeft).map(c => c.offsetWidth));
+    spacer.style.width = Math.max(0, shelf.clientWidth - pad - padR - lastWidth - gap) + 'px';
+  };
+  sizeSpacer();
   const pageTo = (dir) => {
     const left = shelf.scrollLeft, width = shelf.clientWidth;
     const lefts = [...new Set(tiles().map(t => t.offsetLeft))].sort((a, b) => a - b);

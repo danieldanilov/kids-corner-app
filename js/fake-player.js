@@ -15,7 +15,9 @@ export function createFakePlayer({ fake }) {
       const later = (ms, fn) => timers.push(setTimeout(fn, ms));
       const steps = 6;
       for (let i = 0; i <= steps; i++) later((loadMs / steps) * i, () => emit('progress', { fraction: i / steps, stage: i < 3 ? 'resolving' : 'buffering' }));
-      later(loadMs + 10, () => {
+      const needsTap = (cfg.needsTapFor || []).includes(item.kind);
+      if (needsTap) later(Math.min(1500, loadMs / 2), () => emit('needs-tap', { state: -1, reason: 'unstarted' }));
+      later(loadMs + 10 + (needsTap ? 4000 : 0), () => {
         if (failAll) { emit('failed-all', { reasons: ['probe-duration', 'no-cached-stream'] }); return; }
         emit('ready'); playing = true;
         emit('report', { ttffMs: loadMs, fileSize: 141000000, container: 'mp4', path: 'direct', candidate: { name: '[TB+] Torrentio 1080p', filename: 'Fake.S01E01.mp4', url: 'https://cdn.example/x' }, fallbacks: [{ reason: 'probe-duration', filename: 'Wrong.mkv' }], failures: [] });

@@ -105,6 +105,8 @@ app.render = render;
 async function boot() {
   app.store = await openStore();
   app.settings = await app.store.getSettings();
+  // v1 ships without "how many shows" and daily time (no child-facing design yet): both stay off.
+  app.settings.limits = { ...app.settings.limits, dailyMinutes: 0, showsMode: 'off', showsPerDay: 0 };
   app.usage = rollUsage(await app.store.getUsage(), todayKey());
   app.failed = await app.store.getFailed();
   app.favs = await app.store.allFavs();

@@ -118,13 +118,20 @@ export async function renderCategory(view, app, catId) {
   if (!cat) return app.go('#/');
   const { buildRows } = await import('./data.js');
   const rows = buildRows(cat, app.catalogs, { hidden: app.hidden().titles });
-  const items = rows.flatMap(r => r.items);
+  // Each type group (and the Hebrew channels) starts on a fresh column, so shapes never mix in a column.
+  const perCol = portrait() ? 3 : 2;
+  let html = '', count = 0, prevType = null;
+  for (const r of rows) {
+    if (count && (r.type !== prevType || r.id === 'hebrew')) { const pad = (perCol - (count % perCol)) % perCol; html += '<span class="shelf-pad" aria-hidden="true"></span>'.repeat(pad); count += pad; }
+    for (const t of r.items) { html += posterHtml(t, app, { data: `data-act="title" data-type="${esc(t.type)}" data-id="${esc(t.id)}"` }); count++; }
+    prevType = r.type;
+  }
   view.className = 'screen category';
   view.innerHTML = `
     <header class="page-top">${homeBtn()}${chipHtml(cat, app, true)}<h1 class="page-name">${esc(cat.label)}</h1>
       <div class="pager">${pagerHtml()}</div></header>
     <div class="shelf cat-shelf" data-cat="${cat.id}">
-      ${items.map(t => posterHtml(t, app, { data: `data-act="title" data-type="${esc(t.type)}" data-id="${esc(t.id)}"` })).join('')}
+      ${html}
       <div class="shelf-end" aria-hidden="true">${pom(app.bedtime ? 'sleep' : 'day')}${CUSHION}</div>
     </div>`;
   wireShelf(view, app);
@@ -143,17 +150,29 @@ const pagerHtml = () => `<button class="round-btn page-btn tapable" data-page="-
 function wireShelf(view, app) {
   const shelf = view.querySelector('.shelf');
   const [prev, next] = view.querySelectorAll('.page-btn');
+  const pad = parseFloat(getComputedStyle(shelf).paddingLeft) || 0;
+  const tiles = () => [...shelf.querySelectorAll('.poster, .ep')];
   const update = () => {
     const atStart = shelf.scrollLeft <= 2, atEnd = shelf.scrollLeft + shelf.clientWidth >= shelf.scrollWidth - 2;
     prev.classList.toggle('inert', atStart); next.classList.toggle('inert', atEnd);
     prev.disabled = atStart; next.disabled = atEnd;
+    // A poster cut by the shelf edge is a sliver: dimmed and not tappable until paged into view.
+    // The visible page is the shelf minus its side gutters, so a poster peeking into a gutter counts as cut.
+    const sr = shelf.getBoundingClientRect(), padR = parseFloat(getComputedStyle(shelf).paddingRight) || 0;
+    const lo = sr.left + pad - 1, hi = Math.min(sr.right, innerWidth) - padR + 1;
+    for (const t of tiles()) { const r = t.getBoundingClientRect(); t.classList.toggle('partial', r.left < lo || r.right > hi); }
   };
-  shelf.addEventListener('scroll', () => requestAnimationFrame(update), { passive: true });
-  for (const b of [prev, next]) b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    app.effect('arrow');
-    shelf.scrollBy({ left: +b.dataset.page * (shelf.clientWidth - 40), behavior: app.reduced() ? 'auto' : 'smooth' });
-  });
+  shelf.addEventListener('scroll', () => { cancelAnimationFrame(shelf._u); shelf._u = requestAnimationFrame(update); }, { passive: true });
+  // Page by whole columns: next starts at the first column cut by the right edge; back ends where this page began.
+  const pageTo = (dir) => {
+    const left = shelf.scrollLeft, width = shelf.clientWidth;
+    const lefts = [...new Set(tiles().map(t => t.offsetLeft))].sort((a, b) => a - b);
+    let target;
+    if (dir > 0) target = lefts.find(x => x + 1 > left + pad && tiles().some(t => t.offsetLeft === x && t.offsetLeft + t.offsetWidth > left + width + 1)) ?? left + width - pad;
+    else target = lefts.find(x => x - pad >= left - width + 2 * pad - 1) ?? 0;
+    shelf.scrollTo({ left: Math.max(0, target - pad), behavior: app.reduced() ? 'auto' : 'smooth' });
+  };
+  for (const b of [prev, next]) b.addEventListener('click', (e) => { e.stopPropagation(); app.effect('arrow'); pageTo(+b.dataset.page); });
   update();
   return { shelf, update };
 }

@@ -23,6 +23,7 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
   let bedtime = false;
   let index = { en: new Set(), ru: new Set() };
   const buffers = new Map();
+  const lastEffect = {};
 
   function applyGains() {
     if (!ctx) return;
@@ -100,6 +101,9 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
     },
     effect(name) {
       if (!ctx || settings.all === false || settings.effects === 'off' || bedtime) return;
+      const now = performance.now();
+      if (lastEffect[name] && now - lastEffect[name] < 250) return;
+      lastEffect[name] = now;
       const e = EFFECTS[name];
       if (!e) return;
       const [freqs, wave, len] = e;
@@ -124,6 +128,7 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
       g.gain.exponentialRampToValueAtTime(0.8, t + 0.03);
       g.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.25);
       o.connect(g); g.connect(effects); o.start(t); o.stop(t + len + 0.3);
+      return { fade() { try { const n = ctx.currentTime; g.gain.cancelScheduledValues(n); g.gain.setTargetAtTime(0.0001, n, 0.02); o.stop(n + 0.12); } catch { /* ended */ } } };
     },
   };
 }

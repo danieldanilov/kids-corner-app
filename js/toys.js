@@ -17,13 +17,28 @@ const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [..
 let SOUND = null, REVEAL = null;
 const audio = () => {};
 const under = () => {};
+// One voice per element (review S2): a new tap on the same element within 250 ms makes no new tone,
+// and a later tap fades out that element's previous tone first. The movement can still restart.
+export const TONE_GAP_MS = 250;
+export const toneAllowed = (lastAt, now) => lastAt == null || now - lastAt >= TONE_GAP_MS;
+let TAPPED = null;          // the element whose tap handler is running
 // tone(freq | [freqs], {dur, type, gap}): fixed pitches through the app's effects gain.
 function tone(freqs, { dur = 0.22, type = 'sine', gap = 0.11 } = {}) {
-  [].concat(freqs).forEach((f, i) => setTimeout(() => SOUND?.tone(f, type, dur), i * gap * 1000));
+  const el = TAPPED, now = performance.now();
+  if (el) {
+    if (!toneAllowed(el._toneAt, now)) return;
+    el._toneAt = now;
+    (el._voices || []).forEach(v => v?.fade());
+    el._voices = [];
+  }
+  [].concat(freqs).forEach((f, i) => {
+    const t = setTimeout(() => { const v = SOUND?.tone(f, type, dur); if (el && v) el._voices.push(v); }, i * gap * 1000);
+    if (el) el._voices.push({ fade: () => clearTimeout(t) });
+  });
 }
 const revealFrom = (el, done, shape) => REVEAL(el, done, shape);
 function stage(inner) { return `<svg class="stage" viewBox="0 0 1000 1000">${inner}</svg>`; }
-function onTap(root, sel, fn) { $$(sel, root).forEach(el => el.addEventListener('pointerdown', (e) => { e.preventDefault(); audio(); fn(el, e); })); }
+function onTap(root, sel, fn) { $$(sel, root).forEach(el => el.addEventListener('pointerdown', (e) => { e.preventDefault(); audio(); TAPPED = el; try { fn(el, e); } finally { TAPPED = null; } })); }
 function retrigger(el, cls, ms) { el.classList.remove(cls); void el.getBoundingClientRect(); el.classList.add(cls); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove(cls), ms); }
 const TOYS = {
  owl(root){ root.innerHTML=`<div class="toy-bg owl-sky owl-sky-l"></div>`+stage(`
@@ -44,8 +59,8 @@ const TOYS = {
   return {set(p){$$('.lid',sv).forEach(l=>l.style.transform=`scaleY(${1-.92*p})`);},
    handoff(done){under();root.classList.add('owl-go');setTimeout(done,1200);}};},
 
- curtain(root,item){ root.innerHTML=`<div class="cur l"><span class="rope"></span></div><div class="peek">${pom()}</div><div class="cur r"><span class="rope"></span></div><div class="valance"></div><div class="bulbs">${'<i class="bulb"></i>'.repeat(7)}</div>`;
-  onTap(root,'.cur',el=>{retrigger(el,'sway',620);tone(196,{dur:.3});});
+ curtain(root,item){ root.innerHTML=`<div class="cur l"><span class="rope"></span><span class="cur-hit"></span></div><div class="peek">${pom()}</div><div class="cur r"><span class="rope"></span><span class="cur-hit"></span></div><div class="valance"></div><div class="bulbs">${'<i class="bulb"></i>'.repeat(7)}</div>`;
+  onTap(root,'.cur',el=>{retrigger(el,'sway',620);tone(220,{dur:.3});});
   onTap(root,'.peek',el=>{el.classList.add('out');retrigger($('.pom',el),'wave',900);tone([330,392],{gap:.12});clearTimeout(el._o);el._o=setTimeout(()=>el.classList.remove('out'),1100);});
   return {set(p){$$('.bulb',root).forEach((b,i)=>b.classList.toggle('on',p>=(i+1)/7-.001));},
    loop(on){$('.bulbs',root).classList.toggle('loop',on);},

@@ -112,3 +112,8 @@
 .mtoy.train-go .trainmove{transform:translateX(250px);transition:transform .6s ease-in-out}
 .mtoy .trainmove{transition:transform .6s}
 .mtoy .reveal-anim{transition:clip-path .6s ease-in-out,-webkit-clip-path .6s ease-in-out}
+
+/* App additions (review M4, M5): no tap reaches the bottom 64 px; hidden hand-off layers never take taps. */
+.mtoy .cur{pointer-events:none}
+.mtoy .cur .cur-hit{position:absolute;left:0;right:0;top:0;bottom:64px;pointer-events:auto}
+.mtoy .bigbub,.mtoy .puff,.mtoy .puffc,.mtoy .drops,.mtoy .drop,.mtoy .fimg,.mtoy .glow,.mtoy .toy-bg,.mtoy .valance,.mtoy .bulbs{pointer-events:none}

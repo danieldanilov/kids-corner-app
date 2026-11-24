@@ -559,14 +559,19 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     emit('progress', { fraction: null, stage: 'buffer' });
     const sync = yt.load(item.ytId || item.videoId, startAt || 0);
     if (!sync) rep.ytLoadedLate = true;
-    // If the player is still unstarted or cued after a moment, iOS refused the programmatic start: show it so
-    // she can tap YouTube's own play button. While it is buffering it is simply loading, so keep waiting.
+    // If the video hasn't reached PLAYING after a moment, show the player: either iOS refused the programmatic
+    // start (she taps YouTube's play button) or YouTube is showing a pre-roll ad, which the API reports as
+    // unstarted. Ads may not be hidden under YouTube's terms, and showing them lets her press Skip.
+    // While it is buffering it is simply loading, so keep waiting a little longer.
     let tapChecks = 0;
     const checkTap = () => {
       if (started) return;
       const st = yt.state();
       if ((st === YT_STATE.BUFFERING || st === undefined) && ++tapChecks < 6) { needsTapT = setTimeout(checkTap, 1500); return; }
-      if (st === YT_STATE.UNSTARTED || st === YT_STATE.CUED || tapChecks >= 6) { rep.needsTap = true; yt.show(true); emit('needs-tap', {}); }
+      if (st === YT_STATE.UNSTARTED || st === YT_STATE.CUED || tapChecks >= 6) {
+        rep.needsTap = true; yt.show(true);
+        emit('needs-tap', { state: st, reason: st === YT_STATE.CUED ? 'tap' : 'tap_or_ad' });
+      }
     };
     needsTapT = setTimeout(checkTap, o.ytNeedsTapMs + (sync ? 0 : 3000));
     s._ctl.pause = () => { yt.show(false); yt.pause(); };

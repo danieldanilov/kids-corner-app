@@ -100,6 +100,7 @@ export function createPlayUI(app) {
   }
 
   function teardown() {
+    layer.classList.remove('needs-tap');
     if (!ctx) return;
     clearTimeout(ctx.toyTimer); clearTimeout(ctx.stallTimer); clearTimeout(ctx.nightTimer);
     try { ctx.session.stop(); } catch { /* already stopped */ }
@@ -123,7 +124,8 @@ export function createPlayUI(app) {
     const prev = app.progress.get(item.videoId);
     const startAt = prev && !isFinished(prev) ? Math.max(0, prev.position - 2) : 0;
     const cat = app.catOf(data.title.id) || (data.title.type === 'YouTube' ? 'youtube' : data.title.type === 'Audio' ? 'stories' : 'shows');
-    ctx = { data, videos, index, item, cat, fromKeep, playId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, startedAt: Date.now(),
+    const returnTo = ctx?.returnTo || (location.hash || '#/');
+    ctx = { data, videos, index, item, cat, fromKeep, returnTo, playId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, startedAt: Date.now(),
       position: startAt, duration: 0, paused: false, ready: false, lastTick: 0, lastPos: startAt, lastSave: 0, watched: 0 };
     layer.dataset.cat = app.bedtime ? 'bedtime' : cat;
     toyLayer.dataset.cat = layer.dataset.cat;
@@ -150,6 +152,13 @@ export function createPlayUI(app) {
     on('stalled', () => { clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => stallEl.classList.add('open'), 1000); });
     on('resumed', () => { clearTimeout(my.stallTimer); stallEl.classList.remove('open'); if (my.paused) { my.paused = false; pauseEl.classList.remove('open'); setRail(); } });
     on('ended', () => onEnded(my));
+    on('needs-tap', () => {
+      clearTimeout(my.toyTimer);
+      if (my.toy) { my.toy.destroy(); my.toy = null; }
+      toyLayer.classList.remove('open', 'fading');
+      pauseEl.classList.remove('open'); stallEl.classList.remove('open');
+      layer.classList.add('needs-tap');
+    });
     on('failed-all', (d) => fail(d.reasons || [], my));
     on('report', (d) => { if (d.playId && !my.playerPlayId) { my.playerPlayId = d.playId; } const { playId, ...rest } = d; logPlay({ ...rest, playerPlayId: playId }, my); });
   }
@@ -181,6 +190,7 @@ export function createPlayUI(app) {
   async function onReady(c) {
     if (c.ready) return;
     c.ready = true;
+    layer.classList.remove('needs-tap');
     clearTimeout(c.toyTimer);
     if (c.fromKeep) app.speak('title.' + c.data.title.id);
     if (c.toy) {
@@ -263,7 +273,7 @@ export function createPlayUI(app) {
     ctx = null; app.playing = false;
     show(false);
     if (reason === 'limit') { app.render(); return; }
-    app.go(`#/t/${c.data.title.type}/${c.data.title.id}`);
+    app.go(c.returnTo);
   }
 
   async function onEnded(c) {
@@ -312,11 +322,10 @@ export function createPlayUI(app) {
     overlay.innerHTML = `<div class="sleeping-card" data-cat="${app.bedtime ? 'bedtime' : c.cat}"><div class="goodbye-pom">${pom('sleep')}</div></div>`;
     overlay.classList.add('open');
     show(false);
-    app.speak('ui.sleeping');
-    await wait(3000);
+    await Promise.all([app.speak('ui.sleeping').then(() => wait(1000)), wait(3000)]);
     overlay.classList.remove('open'); overlay.innerHTML = '';
     // The failed item stays visible this time; from the next session it's hidden (spec 5.6).
-    app.go(`#/t/${c.data.title.type}/${c.data.title.id}`);
+    app.go(c.returnTo || `#/t/${c.data.title.type}/${c.data.title.id}`);
   }
 
   // Resume from Keep watching: straight into the loading moment, no show page on the way.

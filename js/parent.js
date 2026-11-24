@@ -31,7 +31,7 @@ async function showPin(app) {
   const setting = !rec;
   let first = null, entry = '';
   layer.innerHTML = `<div class="gate">
-    <button class="round-btn gate-home tapable" aria-label="Home">${ICONS.home}</button>
+    <button class="round-btn gate-home tapable" aria-label="back">${ICONS.back}</button>
     <div class="pin-card"><p class="pin-title">${setting ? 'Choose a 4-digit grown-up PIN' : 'Grown-ups'}</p>
       <div class="pin-dots">${'<span></span>'.repeat(4)}</div><p class="pin-msg" aria-live="polite"></p>
       <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map(k => k === '' ? '<span></span>' : `<button class="key" data-k="${k}">${k}</button>`).join('')}</div></div></div>`;
@@ -121,19 +121,6 @@ export async function renderParent(view, app) {
       <div class="field"><span>One story, then good night</span>${sw('bedtime.oneStory', s.bedtime.oneStory)}</div>
       ${u.goodnight ? '<div class="field"><span>She is on the good night screen</span><button class="btn" data-a="wake">Wake the app</button></div>' : ''}
       <p class="hint">Bedtime switches only between videos, never in the middle of one.</p>
-    </section>
-
-    <section><h2>How many shows</h2>
-      <div class="field">${seg('limits.showsMode', s.limits.showsMode, [['off', 'Off'], ['ask', 'Ask her (1 to 3)'], ['fixed', 'Fixed number']])}
-        ${s.limits.showsMode === 'fixed' ? `<input type="number" min="1" max="10" data-input="limits.showsPerDay" value="${s.limits.showsPerDay || 2}">` : ''}</div>
-      <div class="field"><span>Today: ${u.episodesEnded} ended${u.chosenShows ? `, she picked ${u.chosenShows}` : ''}${u.extraShows ? `, +${u.extraShows} given` : ''}</span><button class="btn" data-a="more-show">One more show today</button></div>
-    </section>
-
-    <section><h2>Daily time</h2>
-      <div class="field">${seg('limits.dailyMinutes', s.limits.dailyMinutes, [[0, 'Off'], [30, '30 min'], [45, '45 min'], [60, '60 min'], [90, '90 min']])}</div>
-      <div class="field"><span>At the limit, a movie</span>${seg('limits.movieAtLimit', s.limits.movieAtLimit, [['finish', 'finishes'], ['pause', 'pauses']])}</div>
-      <div class="field"><span>Today: ${Math.round(u.seconds / 60)} min watched${u.extraMinutes ? `, +${u.extraMinutes} min given` : ''}</span><button class="btn" data-a="more-time">15 more minutes today</button></div>
-      <p class="hint">Limits land at the end of an episode, never in the middle.</p>
     </section>
 
     <section><h2>Motion</h2><div class="field">${seg('motion', s.motion, [['auto', 'Follow iPad'], ['reduced', 'Reduced'], ['normal', 'Normal']])}</div></section>

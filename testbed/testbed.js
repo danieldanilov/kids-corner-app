@@ -144,6 +144,16 @@ function askHeard(id, base) {
   el.after(row);
 }
 
+function askAd(id) {
+  const el = document.querySelector(`[data-log="${id}"]`);
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = '<span class="hint">Did an ad play before the video?</span><button>Yes</button><button>No</button>';
+  const [yes, no] = row.querySelectorAll('button');
+  const save = v => { record('yt-ads', v === 'yes' ? 'warn' : 'pass', { adBeforeVideo: v }); row.remove(); };
+  yes.onclick = () => save('yes'); no.onclick = () => save('no');
+  el.after(row);
+}
+
 async function playCheck(id, item, { expectPath, listen = true } = {}) {
   clearLog(id); record(id, 'run');
   const s = startSession(item);
@@ -208,12 +218,12 @@ const RUNS = {
     const t0 = performance.now();
     const s = startSession({ kind: 'youtube', ytId: YT_IDS[0] }); // called inside the tap
     const r = await waitFor(s, ['ready', 'needs-tap', 'failed-all'], 12000);
-    if (r?.t === 'ready') { const ms = Math.round(performance.now() - t0); log(id, `playing ${ms} ms after the tap`); return record(id, 'pass', { startMs: ms, tapOnPlayerNeeded: false }); }
+    if (r?.t === 'ready') { const ms = Math.round(performance.now() - t0); log(id, `playing ${ms} ms after the tap`); record(id, 'pass', { startMs: ms, tapOnPlayerNeeded: false }); askAd(id); return; }
     if (r?.t === 'needs-tap') {
-      log(id, 'iPad refused a start from this page; tap the play button on the YouTube player now');
+      log(id, 'The video did not start by itself. Look at the YouTube box: if an ad is playing, wait or press Skip; if you see a play button, tap it.');
       record(id, 'warn', { tapOnPlayerNeeded: true });
       const r2 = await waitFor(s, ['ready', 'failed-all'], 30000);
-      if (r2?.t === 'ready') { log(id, 'started after a tap on the player'); return record(id, 'warn', { tapOnPlayerNeeded: true, startedAfterTap: true }); }
+      if (r2?.t === 'ready') { log(id, 'the video itself is playing now'); record(id, 'warn', { tapOnPlayerNeeded: true, startedAfterTap: true }); askAd(id); return; }
     }
     log(id, 'did not start: ' + JSON.stringify(r?.d?.reasons || 'timeout'));
     record(id, 'fail', { reasons: r?.d?.reasons || ['timeout'] });

@@ -100,7 +100,7 @@ export async function renderParent(view, app) {
   const ends = {};
   for (const p of today) ends[p.endReason || 'unknown'] = (ends[p.endReason || 'unknown'] || 0) + 1;
 
-  const voiceMissing = allTitles.filter(t => !app.sound.has('en', 'title.' + t.id) && !app.sound.has('ru', 'title.' + t.id));
+  const voiceMissing = allTitles.filter(t => !app.sound.hasTitle(t.id));
   const failedIds = [...hid.failedTitles];
 
   view.className = 'screen parent';
@@ -112,7 +112,7 @@ export async function renderParent(view, app) {
       <div class="field"><span>All sounds</span>${sw('sounds.all', s.sounds.all !== false)}</div>
       <div class="field"><span>Spoken names</span>${seg('sounds.names', s.sounds.names, [['off', 'Off'], ['quiet', 'Quiet'], ['normal', 'Normal']])}<button class="btn" data-a="sample-name">Play a sample</button></div>
       <div class="field"><span>Tap and toy sounds</span>${seg('sounds.effects', s.sounds.effects, [['off', 'Off'], ['quiet', 'Quiet'], ['normal', 'Normal']])}<button class="btn" data-a="sample-effect">Play a sample</button></div>
-      <div class="field"><span>Names language</span>${seg('sounds.namesLang', s.sounds.namesLang, [['en-ru', 'English then Russian'], ['en', 'English'], ['ru', 'Russian']])}</div>
+      <div class="field"><span>Interface phrases</span>${seg('sounds.namesLang', s.sounds.namesLang, [['en-ru', 'English then Russian'], ['en', 'English'], ['ru', 'Russian']])}</div>
     </section>
 
     <section><h2>Bedtime</h2>
@@ -158,7 +158,7 @@ export async function renderParent(view, app) {
     </section>
 
     <section><h2>Missing voice clips</h2>
-      <p class="hint">${voiceMissing.length} titles have no spoken name. A title is spoken once, as written in the catalog.</p>
+      <p class="hint">${voiceMissing.length} titles have no spoken name. Titles are always spoken once, in their own language; this setting is for interface phrases only.</p>
       ${voiceMissing.length ? `<details><summary>Show them</summary><ul class="plain">${voiceMissing.slice(0, 300).map(t => `<li>${esc(t.name)}</li>`).join('')}</ul></details>` : ''}
     </section>
 

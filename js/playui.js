@@ -228,7 +228,7 @@ export function createPlayUI(app) {
     const v = c.videos;
     const still = c.videos[c.index].thumbnail || c.data.title.background || c.data.title.poster || '';
     const tile = (i, dir) => i < 0 || i >= v.length ? '<span class="pause-gap" aria-hidden="true"></span>' :
-      `<button class="pause-tile tapable" data-i="${i}" aria-label="${dir}"><span class="fallback">${CHIP_ART[c.cat] || ''}</span>${v[i].thumbnail ? `<img src="${v[i].thumbnail}" alt="" onerror="this.remove()">` : ''}<span class="pause-arrow">${dir === 'previous' ? ICONS.left : ICONS.right}</span></button>`;
+      `<button class="pause-tile tapable" data-i="${i}" aria-label="${dir}"><span class="fallback">${CHIP_ART[c.cat] || ''}</span>${v[i].thumbnail ? `<img src="${v[i].thumbnail}" alt="" onerror="this.remove()">` : ''}<span class="pause-arrow">${dir === 'previous' ? ICONS.prev : ICONS.next}</span></button>`;
     pauseEl.innerHTML = `<div class="pause-still" style="background-image:url('${still.replace(/'/g, '%27')}')"></div>
       <div class="pause-row">${tile(c.index - 1, 'previous')}<button class="pause-play tapable" data-cat="${c.cat}" aria-label="play">${ICONS.play}</button>${tile(c.index + 1, 'next')}</div>
       <div class="pause-pom">${pom(app.bedtime ? 'night' : 'day')}</div>`;
@@ -319,10 +319,13 @@ export function createPlayUI(app) {
     logPlay({ endReason: 'failed', failures: reasons }, c);
     if (ctx === c) { teardown(); ctx = null; }
     app.playing = false;
-    overlay.innerHTML = `<div class="sleeping-card" data-cat="${app.bedtime ? 'bedtime' : c.cat}"><div class="goodbye-pom">${pom('sleep')}</div></div>`;
+    overlay.innerHTML = `<div class="sleeping-card" data-cat="${app.bedtime ? 'bedtime' : c.cat}"><button class="round-btn card-back tapable" aria-label="back">${ICONS.back}</button><div class="goodbye-pom">${pom('sleep')}</div></div>`;
     overlay.classList.add('open');
     show(false);
-    await Promise.all([app.speak('ui.sleeping').then(() => wait(1000)), wait(3000)]);
+    let skip;
+    const skipped = new Promise(r => { skip = r; });
+    overlay.querySelector('.card-back').onclick = () => { app.effect('button'); app.sound.stopVoice(); skip(); };
+    await Promise.race([Promise.all([app.speak('ui.sleeping').then(() => wait(1000)), wait(3000)]), skipped]);
     overlay.classList.remove('open'); overlay.innerHTML = '';
     // The failed item stays visible this time; from the next session it's hidden (spec 5.6).
     app.go(c.returnTo || `#/t/${c.data.title.type}/${c.data.title.id}`);

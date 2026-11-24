@@ -1,6 +1,6 @@
 // Kids Corner service worker: app shell and catalog JSON cached so the Home Screen app opens instantly.
 // Never caches video or audio, range requests, Torrentio, the resolver, TorBox or YouTube.
-const VERSION = 'c6ddd84219f6';
+const VERSION = '9ca36b43ba6a';
 const PRECACHE = ["./","css/app.css","css/toys.css","icons/apple-touch-icon.png","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","./index.html","js/art.js","js/data.js","js/fake-player.js","js/gate.js","js/main.js","js/parent.js","js/playback.js","js/playui.js","js/rules.js","js/secrets.js","js/sound.js","js/store.js","js/toys.js","js/views.js","manifest.webmanifest","player/engine.js","player/index.js","player/learned.js","player/mse.js","player/probe.js","player/remux-worker.js","player/remux.js","player/select.js","player/silent.js","player/sources.js","player/vendor/MEDIABUNNY-LICENSE.txt","player/vendor/mediabunny.min.mjs","player/youtube.js","voice/index.json"];
 const SHELL = 'kc-shell-' + VERSION, DATA = 'kc-data', VOICE = 'kc-voice', IMG = 'kc-img';
 const IMG_MAX = 800;

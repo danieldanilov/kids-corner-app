@@ -19,10 +19,15 @@ function dots(app) {
 }
 
 // Poster/tile with the category-colour fallback (spec 2.3).
-export function posterHtml(t, app, { cls = '', progress = null, data = '' } = {}) {
+export function posterHtml(t, app, { cls = '', progress = null, data = '', squareIn = false } = {}) {
   const cat = app.catOf(t.id) || 'shows';
   const square = t.posterShape === 'square' || t.type === 'YouTube' || t.type === 'Audio';
   const bar = progress != null ? `<span class="pbar"><span style="width:${Math.round(progress * 100)}%"></span></span>` : '';
+  if (square && squareIn) {     // home rows: the square art on top of a poster-shaped tile, the category picture below
+    return `<button class="poster tapable sqin ${cls}" data-cat="${cat}" ${data} aria-label="${esc(t.name)}">
+      <span class="sqart">${t.poster ? `<img src="${esc(t.poster)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}</span>
+      <span class="sqfoot">${CHIP_ART[cat] || CHIP_ART.shows}</span>${bar}</button>`;
+  }
   return `<button class="poster tapable ${square ? 'square' : ''} ${cls}" data-cat="${cat}" ${data} aria-label="${esc(t.name)}">
     <span class="fallback">${CHIP_ART[cat] || CHIP_ART.shows}</span>
     ${t.poster ? `<img src="${esc(t.poster)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}${bar}</button>`;
@@ -56,20 +61,20 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
 
   const rowHtml = (r) => {
     if (!r.items.length && !r.ghost) return `<div class="row empty" data-row="${r.key}" aria-hidden="true"></div>`;   // slot stays, nothing moves up
-    const page = app.rowPages[r.key] || 0;
-    const start = page;
-    const left = start > 0;
-    let room = slots - (left ? 1 : 0);
-    const more = r.items.length - start > room;
-    if (more) room -= 1;
-    const vis = r.items.slice(start, start + room);
-    const tiles = vis.map(({ t, p }) => posterHtml(t, app, { progress: p ? Math.min(1, p.position / (p.duration || 1)) : null, data: `data-act="${p ? 'resume' : 'title'}" data-type="${esc(t.type)}" data-id="${esc(t.id)}" ${p ? `data-key="${esc(p.key)}"` : ''}` })).join('');
+    // Pages of whole posters (spec 4.1 v2): all fit, or 6 / 3 per page plus one arrow tile that turns back on the last page.
+    const paged = r.items.length > slots;
+    const per = paged ? slots - 1 : slots;
+    const pages = Math.max(1, Math.ceil(r.items.length / per));
+    const page = Math.min(app.rowPages[r.key] || 0, pages - 1);
+    const start = page * per;
+    const last = page === pages - 1;
+    const vis = r.items.slice(start, start + per);
+    const tiles = vis.map(({ t, p }) => posterHtml(t, app, { squareIn: true, progress: p ? Math.min(1, p.position / (p.duration || 1)) : null, data: `data-act="${p ? 'resume' : 'title'}" data-type="${esc(t.type)}" data-id="${esc(t.id)}" ${p ? `data-key="${esc(p.key)}"` : ''}` })).join('');
     const ghost = r.ghost && !r.items.length ? `<div class="poster ghost">${ICONS.heart}</div>` : '';
     return `<div class="row" data-row="${r.key}">
       <button class="sign tapable" data-act="sign" data-key="${r.sign}" aria-label="${r.key}"><span class="art">${ROW_ART[r.key]}</span><span class="word">${ROW_LABEL[r.key]}</span></button>
-      ${left ? `<button class="poster arrow-tile tapable" data-act="rowpage" data-row="${r.key}" data-dir="-1" aria-label="back">${ICONS.left}</button>` : ''}
       ${tiles}${ghost}
-      ${more ? `<button class="poster arrow-tile tapable" data-act="rowpage" data-row="${r.key}" data-dir="1" aria-label="more">${ICONS.right}</button>` : ''}
+      ${paged ? `<button class="poster arrow-tile tapable" data-act="rowpage" data-row="${r.key}" data-pages="${pages}" aria-label="${last ? 'back to the start' : 'more'}">${last ? ICONS.left : ICONS.right}</button>` : ''}
     </div>`;
   };
 
@@ -94,8 +99,8 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     else if (act === 'sign') { app.effect('sign'); app.speak(b.dataset.key); b.classList.remove('nod'); void b.offsetWidth; b.classList.add('nod'); }
     else if (act === 'rowpage') {
       app.effect('arrow');
-      const step = Math.max(1, (portrait() ? 4 : 7) - 2);
-      app.rowPages[b.dataset.row] = Math.max(0, (app.rowPages[b.dataset.row] || 0) + step * +b.dataset.dir);
+      const cur = app.rowPages[b.dataset.row] || 0;
+      app.rowPages[b.dataset.row] = cur + 1 >= +b.dataset.pages ? 0 : cur + 1;
       renderHome(view, app);
     } else if (act === 'title') { app.effect('poster'); app.go(`#/t/${b.dataset.type}/${b.dataset.id}`); }
     else if (act === 'resume') { app.effect('poster'); app.playui.resume(b.dataset.key, b); }
@@ -123,6 +128,7 @@ export async function renderCategory(view, app, catId) {
   let html = '', count = 0, prevType = null;
   for (const r of rows) {
     if (count && (r.type !== prevType || r.id === 'hebrew')) { const pad = (perCol - (count % perCol)) % perCol; html += '<span class="shelf-pad" aria-hidden="true"></span>'.repeat(pad); count += pad; }
+    if (r.id === 'hebrew') { html += '<div class="group-div" lang="he" aria-label="Hebrew">עב</div>'; count += perCol; }
     for (const t of r.items) { html += posterHtml(t, app, { data: `data-act="title" data-type="${esc(t.type)}" data-id="${esc(t.id)}"` }); count++; }
     prevType = r.type;
   }

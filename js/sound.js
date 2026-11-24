@@ -21,7 +21,7 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
   let ctx = null, master, names, effects, current = [];
   let settings = { all: true, names: 'quiet', effects: 'quiet', namesLang: 'en-ru' };
   let bedtime = false;
-  let index = { en: new Set(), ru: new Set() };
+  let files = new Set();          // paths under voice/ without extension: ui/<lang>/<key>, title/<id>
   const buffers = new Map();
   const lastEffect = {};
 
@@ -37,31 +37,32 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
     try {
       const r = await fetchImpl(base + 'index.json');
       const j = await r.json();
-      index = { en: new Set(j.en || []), ru: new Set(j.ru || []) };
+      files = new Set(j.files || []);
     } catch { /* no clips: silence */ }
   }
 
-  async function buffer(lang, key) {
-    const id = lang + '/' + key;
-    if (!buffers.has(id)) {
-      buffers.set(id, (async () => {
-        const r = await fetchImpl(`${base}${lang}/${encodeURIComponent(key)}.m4a`);
+  async function buffer(url) {
+    if (!buffers.has(url)) {
+      buffers.set(url, (async () => {
+        const r = await fetchImpl(url);
         return ctx.decodeAudioData(await r.arrayBuffer());
       })().catch(() => null));
     }
-    return buffers.get(id);
+    return buffers.get(url);
   }
 
-  const has = (lang, key) => index[lang]?.has(key);
+  const clip = (p) => `${base}${p.split('/').map(encodeURIComponent).join('/')}.m4a`;
 
   return {
     loadIndex,
-    has,
-    langsFor(key) {
-      // A title is spoken once, as written in the catalog (only that language's clip exists).
-      if (key.startsWith('title.')) { const l = ['en', 'ru'].find(x => has(x, key)); return l ? [l] : []; }
+    hasTitle: (id) => files.has('title/' + id),
+    hasUi: (lang, key) => files.has(`ui/${lang}/${key}`),
+    // The clip URLs for a phrase key. A title is one clip in its catalog language, whatever the setting;
+    // an interface phrase follows the parent's order (English then Russian by default).
+    clipsFor(key) {
+      if (key.startsWith('title.')) { const p = 'title/' + key.slice(6); return files.has(p) ? [clip(p)] : []; }
       const order = settings.namesLang === 'en' ? ['en'] : settings.namesLang === 'ru' ? ['ru'] : ['en', 'ru'];
-      return order.filter(l => has(l, key));
+      return order.map(l => `ui/${l}/${key}`).filter(p => files.has(p)).map(clip);
     },
     configure(s, isBedtime) { settings = { ...settings, ...s }; bedtime = !!isBedtime; applyGains(); },
     unlock() {
@@ -81,11 +82,11 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
     async say(key) {
       this.stopVoice();
       if (!ctx || settings.all === false || settings.names === 'off') return;
-      const langs = this.langsFor(key);
-      if (!langs.length) return;
+      const urls = this.clipsFor(key);
+      if (!urls.length) return;
       const token = {};
       this._token = token;
-      const bufs = await Promise.all(langs.map(l => buffer(l, key)));
+      const bufs = await Promise.all(urls.map(buffer));
       if (this._token !== token) return;
       let t = ctx.currentTime + 0.02;
       const started = [];

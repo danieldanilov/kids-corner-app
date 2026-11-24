@@ -106,8 +106,12 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   async function listCandidates(item, secrets, emit) {
     emit('progress', { fraction: null, stage: 'list' });
     const it = { ...item, lang: item.lang || lang };
-    if (!(it.runtimeMin > 0) || !it.year) {
-      try { const m = await fetchCinemeta(it); it.runtimeMin ||= m.runtimeMin; it.year ||= m.year; } catch { /* keep */ }
+    const needSeries = it.type === 'series' && (!it.seasonCount || !it.episodeName);
+    if (!(it.runtimeMin > 0) || !it.year || needSeries) {
+      try {
+        const m = await fetchCinemeta(it);
+        it.runtimeMin ||= m.runtimeMin; it.year ||= m.year; it.seasonCount ||= m.seasonCount; it.episodeName ||= m.episodeName;
+      } catch { /* keep: the guards then treat the unknowns strictly */ }
     }
     const streams = await fetchStreams(secrets.torrentioConfig, it);
     const { ranked, skipped } = rankStreams(streams, it, caps(), learned.snapshot());
@@ -552,8 +556,11 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       },
       onError(code) {
         yt.show(false); clearT();
-        rep.failures.push('yt_' + code);
-        finish('failed-all', ['yt_' + code]);
+        // 153: YouTube refuses an embed that sends no Referer, which a no-referrer policy on the page causes.
+        const noRef = /no-referrer/i.test(document.querySelector('meta[name="referrer"]')?.content || '');
+        const reason = code === 153 && noRef ? 'yt_153_referrer_policy' : 'yt_' + code;
+        rep.failures.push(reason);
+        finish('failed-all', [reason]);
       },
     });
     emit('progress', { fraction: null, stage: 'buffer' });
@@ -575,7 +582,8 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     };
     needsTapT = setTimeout(checkTap, o.ytNeedsTapMs + (sync ? 0 : 3000));
     s._ctl.pause = () => { yt.show(false); yt.pause(); };
-    s._ctl.resume = () => { endedByUs = false; yt.play(); };
+    // After our own end nothing may play again: the end panel would be one frame away.
+    s._ctl.resume = () => { if (endedByUs) return; yt.play(); };
     s._ctl.seek = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
     cleanup(() => { stopping = true; clearInterval(poll); clearTimeout(needsTapT); clearT(); yt.show(false); yt.pause(); yt.setHandler(null); });
   }

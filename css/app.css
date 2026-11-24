@@ -7,6 +7,7 @@
   --c-bedtime: #8F91E4; --l-bedtime: #6466BA; --c-youtube: #FF9E7C; --l-youtube: #DE7658;
   --c-stories: #FFD064; --l-stories: #DDA634; --c-russian: #72D0AF; --l-russian: #41A684;
   --c-british: #A8D56E; --l-british: #78AA41;
+  --pom: #A6E3C6; --pom-deep: #5FBF97; --pom-line: #3E8F70; --pom-cheek: #F59A9A;
   --gutter: 32px; --ease-pop: cubic-bezier(.34,1.56,.64,1);
   --font: 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, sans-serif;
   color-scheme: light;
@@ -14,10 +15,10 @@
 :root[data-theme="bedtime"] {
   --paper: #1E2046; --paper-2: #2A2D5C; --card: #33366A; --ink: #EDE8FF; --ink-2: #B9B3D9;
   --lip: rgba(0,0,0,.35); --focus: #EDE8FF; --player-bg: #0B0B18;
-  --c-shows: color-mix(in oklab, #7CC4F0 60%, #1E2046); --c-movies: color-mix(in oklab, #EE8FAB 60%, #1E2046);
-  --c-bedtime: color-mix(in oklab, #8F91E4 60%, #1E2046); --c-youtube: color-mix(in oklab, #FF9E7C 60%, #1E2046);
-  --c-stories: color-mix(in oklab, #FFD064 60%, #1E2046); --c-russian: color-mix(in oklab, #72D0AF 60%, #1E2046);
-  --c-british: color-mix(in oklab, #A8D56E 60%, #1E2046);
+  --c-shows: #3F6E9E; --l-shows: #2C5480; --c-movies: #8E4F6E; --l-movies: #6F3A55;
+  --c-bedtime: #5557A8; --l-bedtime: #3F4189; --c-youtube: #9C5A4C; --l-youtube: #7A4337;
+  --c-stories: #B08A3A; --l-stories: #8A6A26; --c-russian: #2F8068; --l-russian: #22604E;
+  --c-british: #5E8233; --l-british: #476426;
   color-scheme: dark;
 }
 [data-cat="shows"] { --c: var(--c-shows); --l: var(--l-shows); }
@@ -65,7 +66,7 @@ svg { display: block; }
 @keyframes armup{to{transform:rotate(-150deg)}}@keyframes armwig{from{transform:rotate(-150deg)}to{transform:rotate(-115deg)}}
 [data-motion="reduced"] .pom.wavel .arm-r{animation:none;transform:rotate(-150deg)}
 .pom.breathe{animation:breathe 4s ease-in-out infinite}
-[data-motion="reduced"] .pom.breathe, [data-motion="reduced"] .breathe{animation:none}
+[data-motion="reduced"] .pom.breathe{animation:none}
 .pom.yawn{animation:yawn 2s ease-in-out}
 @keyframes yawn{30%{transform:scale(1.04,.94)}60%{transform:scale(.97,1.05)}}
 .pom.breathe { animation: breathe 4s ease-in-out infinite; transform-origin: 50% 90%; }
@@ -109,6 +110,11 @@ svg { display: block; }
 .poster .fallback, .ep .fallback, .big-poster .fallback, .pause-tile .fallback { position: absolute; inset: 0; display: grid; place-items: center; }
 .poster .fallback svg { width: 64%; height: auto; }
 .poster.ghost { background: transparent; box-shadow: none; border: 4px dashed var(--ink-2); opacity: .5; display: grid; place-items: center; color: var(--ink-2); }
+.poster.sqin { display: flex; flex-direction: column; background: var(--c); }
+.poster.sqin .sqart { position: relative; display: block; width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: 19px 19px 0 0; }
+.poster.sqin .sqart img { inset: 3px 3px 0; width: calc(100% - 6px); height: calc(100% - 3px); object-fit: cover; border-radius: 19px 19px 0 0; }
+.poster.sqin .sqfoot { flex: 1; display: grid; place-items: center; }
+.poster.sqin .sqfoot svg { width: 48px; height: 48px; }
 .arrow-tile { background: var(--card); display: grid; place-items: center; color: var(--ink); }
 .arrow-tile .icon { width: 64px; height: 64px; }
 .pbar { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 10px; border-radius: 5px; background: rgba(255,255,255,.75); overflow: hidden; }
@@ -130,6 +136,7 @@ svg { display: block; }
 .shelf::-webkit-scrollbar { display: none; }
 .shelf .partial { pointer-events: none; opacity: .45; transition: opacity 200ms; }
 .shelf-pad { width: 0; }
+.group-div { grid-row: 1 / -1; width: 64px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-family: 'Varela Round', var(--font); font-size: 26px; color: var(--ink-2); }
 .cat-shelf { top: 168px; left: 0; right: 0; height: 576px; padding: 0 var(--gutter) 8px; scroll-padding-left: var(--gutter); grid-template-rows: repeat(2, 280px); grid-auto-columns: max-content; }
 .cat-shelf .poster { width: 187px; height: 280px; scroll-snap-align: start; }
 .cat-shelf .poster.square { width: 280px; }
@@ -165,7 +172,7 @@ svg { display: block; }
 .title-page.movie .movie-body { position: absolute; top: 168px; left: 176px; display: flex; gap: 32px; }
 .title-page.movie .big-poster { width: 300px; height: 450px; }
 .movie-side { padding-top: 28px; max-width: 560px; }
-.movie-name { margin: 0 0 40px; font-size: 36px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.movie-name { margin: 0 0 24px; font-size: 36px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .movie-actions { display: flex; align-items: center; gap: 32px; }
 .movie-actions .heart-btn { position: static; }
 .play-big { width: 200px; height: 200px; border-radius: 50%; background: var(--c); box-shadow: 0 6px 0 var(--l); color: #FFF7EA; display: grid; place-items: center; }
@@ -300,9 +307,9 @@ table.report tr.bad td { color: #B4552F; }
   .home-top { top: 84px; display: grid; grid-template-columns: repeat(4, 184px); gap: 16px; }
   .home-top .pom-tile, .home-top .chip { width: 184px; }
   .rows { top: 380px; gap: 20px; }
-  .row { height: 222px; }
-  .sign { height: 222px; }
-  .row .poster { width: 148px; height: 222px; }
+  .row { height: 204px; }
+  .sign { height: 204px; }
+  .row .poster { width: 136px; height: 204px; }
   .page-top .page-name { font-size: 28px; }
   .cat-shelf { height: 920px; grid-template-rows: repeat(3, 296px); }
   .cat-shelf .poster { width: 197px; height: 296px; }
@@ -311,7 +318,7 @@ table.report tr.bad td { color: #B4552F; }
   .show-side { top: 168px; width: auto; }
   .show-side .big-poster { width: 160px; height: 240px; }
   .show-side .big-poster.square { width: 200px; height: 200px; }
-  .show-side .heart-btn { top: 120px; left: 184px; }
+  .show-side .heart-btn { top: 120px; left: 208px; }
   .title-page.show .big-poster.square + .heart-btn { top: 80px; left: 224px; }
   .ep-shelf { top: 432px; left: 0; height: 664px; padding: 0 var(--gutter) 8px; scroll-padding-left: var(--gutter); grid-template-rows: repeat(3, 208px); }
   .ep { width: 370px; height: 208px; }

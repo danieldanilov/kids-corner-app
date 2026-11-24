@@ -12,6 +12,8 @@ const I = {
  half:`<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="none" stroke="currentColor" stroke-width="5" opacity=".35"/><path d="M32 8a24 24 0 0 1 0 48" fill="none" stroke="#4D97C6" stroke-width="6" stroke-linecap="round"/><path d="M26 22l14 10-14 10z" fill="currentColor"/></svg>`,
  sprout:`<svg viewBox="0 0 64 64"><path d="M32 56V30" stroke="#41A684" stroke-width="5" stroke-linecap="round"/><path d="M32 34c-2-12-12-16-20-14 0 10 8 16 20 14zM32 30c2-12 12-16 20-14 0 10-8 16-20 14z" fill="#72D0AF"/><path d="M18 56h28" stroke="#C88F5A" stroke-width="5" stroke-linecap="round"/></svg>`,
  house:`<svg viewBox="0 0 64 64"><path d="M10 30L32 11l22 19" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 27v24a3 3 0 0 0 3 3h26a3 3 0 0 0 3-3V27" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/><rect x="27" y="38" width="10" height="16" rx="3" fill="currentColor"/></svg>`,
+ backA:`<svg viewBox="0 0 64 64"><path d="M52 32H18" stroke="currentColor" stroke-width="8" stroke-linecap="round"/><path d="M32 16L16 32l16 16" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ prev:`<svg viewBox="0 0 64 64"><path d="M48 16L24 32l24 16z" fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><rect x="12" y="14" width="8" height="36" rx="3" fill="currentColor"/></svg>`,
  back:`<svg viewBox="0 0 64 64"><path d="M38 14L20 32l18 18" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
  left:`<svg viewBox="0 0 64 64"><path d="M38 14L20 32l18 18" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
  right:`<svg viewBox="0 0 64 64"><path d="M26 14l18 18-18 18" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -31,14 +33,14 @@ const withClass = (s, cls) => /^<svg class="/.test(s) ? s.replace('<svg class="'
 // Pom, the companion (spec 3). mood: 'day' | 'night' | 'sleep' | 'wave'
 function pomSvg(cls = '') {return `<svg class="pom ${cls}" viewBox="0 0 200 200" aria-label="Pom">
  <g class="pom-b">
-  <circle cx="56" cy="64" r="21" fill="#DE8C4E"/><circle cx="144" cy="64" r="21" fill="#DE8C4E"/>
-  <circle cx="56" cy="64" r="10" fill="#F59A9A" opacity=".55"/><circle cx="144" cy="64" r="10" fill="#F59A9A" opacity=".55"/>
-  <g class="arm-l"><ellipse cx="34" cy="138" rx="14" ry="20" fill="#DE8C4E"/></g>
-  <ellipse cx="72" cy="182" rx="20" ry="11" fill="#DE8C4E"/><ellipse cx="128" cy="182" rx="20" ry="11" fill="#DE8C4E"/>
-  <ellipse cx="100" cy="120" rx="72" ry="64" fill="#F5A96A"/>
-  <ellipse cx="100" cy="146" rx="40" ry="28" fill="#FBC796"/>
-  <g class="arm-r"><ellipse cx="164" cy="140" rx="14" ry="20" fill="#DE8C4E"/></g>
-  <path class="tuft" d="M96 58c-8-16 2-26 12-22 8 3 6 12-1 12" fill="none" stroke="#DE8C4E" stroke-width="7" stroke-linecap="round"/>
+  <path d="M66 82C40 72 18 50 16 22c26 4 48 22 58 50z" fill="#5FBF97" stroke="#3E8F70" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M134 82c26-10 48-32 50-60-26 4-48 22-58 50z" fill="#5FBF97" stroke="#3E8F70" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M62 74C48 62 34 46 26 30M138 74c14-12 28-28 36-44" stroke="#A6E3C6" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <g class="arm-l"><ellipse cx="34" cy="138" rx="14" ry="20" fill="#5FBF97" stroke="#3E8F70" stroke-width="4"/></g>
+  <ellipse cx="72" cy="182" rx="20" ry="11" fill="#5FBF97" stroke="#3E8F70" stroke-width="4"/><ellipse cx="128" cy="182" rx="20" ry="11" fill="#5FBF97" stroke="#3E8F70" stroke-width="4"/>
+  <ellipse cx="100" cy="120" rx="72" ry="64" fill="#A6E3C6" stroke="#3E8F70" stroke-width="5"/>
+  <ellipse cx="100" cy="146" rx="40" ry="28" fill="#DDF6EA"/>
+  <g class="arm-r"><ellipse cx="164" cy="140" rx="14" ry="20" fill="#5FBF97" stroke="#3E8F70" stroke-width="4"/></g>
   <g class="eyes"><circle cx="78" cy="110" r="7.5" fill="#2B2541"/><circle cx="122" cy="110" r="7.5" fill="#2B2541"/><circle cx="80.5" cy="107.5" r="2.4" fill="#fff"/><circle cx="124.5" cy="107.5" r="2.4" fill="#fff"/></g>
   <g class="eyes-c" style="display:none"><path d="M70 111q8 6 16 0M114 111q8 6 16 0" stroke="#2B2541" stroke-width="4" fill="none" stroke-linecap="round"/></g>
   <ellipse cx="62" cy="128" rx="11" ry="7" fill="#F59A9A"/><ellipse cx="138" cy="128" rx="11" ry="7" fill="#F59A9A"/>
@@ -55,7 +57,7 @@ export const CHIP_ART = { shows: I.tv, movies: I.popcorn, bedtime: I.moon, youtu
 export const ROW_ART = { myshows: I.heart, keep: I.half, new: I.sprout, stories: I.book, sleepyshows: I.moon, sleepyvideos: I.yt };
 export const ROW_LABEL = { myshows: 'My shows', keep: 'Keep watching', new: 'New', stories: 'Stories', sleepyshows: 'Sleepy shows', sleepyvideos: 'Sleepy videos' };
 export const ICONS = Object.fromEntries(Object.entries({
-  home: I.house, back: I.back, play: I.play, pause: I.pause, back15: I.rew, fwd15: I.fwd, next: I.next, again: I.again,
+  home: I.house, back: I.backA, play: I.play, prev: I.prev, pause: I.pause, back15: I.rew, fwd15: I.fwd, next: I.next, again: I.again,
   heart: I.heartO, heartFull: I.heart, lock: I.lock, left: I.left, right: I.right, check: I.check,
 }).map(([k, v]) => [k, withClass(v, 'icon')]));
 

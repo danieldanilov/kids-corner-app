@@ -1,6 +1,6 @@
 // Her screens: home, category, show/movie/channel pages, rest, good night, the how-many picker (spec 4, 8).
 import { CATEGORIES, BEDTIME_ROWS, kindOf } from './data.js';
-import { keepWatching, myShows, isFinished, showsAllowed } from './rules.js';
+import { keepWatching, myShows, isFinished, showsAllowed, starterShows, newTitles } from './rules.js';
 import { pom, CHIP_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -52,9 +52,13 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
   if (app.bedtime) {
     rows = BEDTIME_ROWS.map(r => ({ key: r.key, sign: r.sign, items: (app.catalogs[`${r.type}/${r.id}`] || []).filter(m => !hidden.has(m.id)).map(m => ({ t: m })) }));
   } else {
-    const mine = myShows(app.favs, app.settings.pinned, hidden).map(id => findMeta(app, id)).filter(Boolean).map(t => ({ t }));
+    const own = myShows(app.favs, app.settings.pinned, hidden).map(id => findMeta(app, id)).filter(Boolean);
+    const starter = starterShows(app.catalogs['series/shows'], { favs: app.favs, pinned: app.settings.pinned, hidden });
+    const mine = (own.length ? own : starter).map(t => ({ t }));
     const keep = keepWatching([...app.progress.values()], { hidden }).map(p => ({ t: { id: p.titleId, type: p.titleType, name: p.titleName, poster: p.poster, posterShape: p.posterShape }, p }));
-    const fresh = app.settings.newRow.filter(t => !hidden.has(t.id)).map(t => ({ t }));
+    const picked = app.settings.newRow.filter(t => !hidden.has(t.id));
+    const arrived = newTitles(app.catalogOrder || [], app.seen, Date.now()).filter(id => !hidden.has(id) && !picked.some(p => p.id === id)).map(id => findMeta(app, id)).filter(Boolean);
+    const fresh = [...picked, ...arrived].map(t => ({ t }));
     rows = [{ key: 'myshows', sign: 'row.myshows', items: mine, ghost: true }, { key: 'keep', sign: 'row.keep', items: keep, keep: true }, { key: 'new', sign: 'row.new', items: fresh }];
   }
   const chips = app.bedtime ? CATEGORIES.filter(c => c.id === 'bedtime' || c.id === 'stories') : CATEGORIES;
@@ -138,7 +142,7 @@ export async function renderCategory(view, app, catId) {
       <div class="pager">${pagerHtml()}</div></header>
     <div class="shelf cat-shelf" data-cat="${cat.id}">
       ${html}
-      <div class="shelf-end" aria-hidden="true">${pom(app.bedtime ? 'sleep' : 'day')}${CUSHION}</div>
+      <div class="shelf-end pom-pokeable" aria-hidden="true">${pom(app.bedtime ? 'sleep' : 'day')}${CUSHION}</div>
     </div>`;
   wireShelf(view, app);
   view.onclick = (e) => {

@@ -110,7 +110,7 @@ export function applyBedtime(current, wanted, { playing }) {
 export const FAIL_TTL_MS = 7 * 86400000;
 export const SERIES_FAILS_TO_HIDE = 3;
 // Setup problems (no config, a rejected token or origin), an app bug, or a network blip: never the title's fault.
-export const SETUP_RE = /^(not-configured|unauthorized|misconfigured|forbidden|no-player|app_token|no_secrets|origin|bad_item)$|network|fetch|load failed|timed? ?out|offline|abort/i;
+export const SETUP_RE = /^(not-configured|unauthorized|misconfigured|forbidden|no-player|app_token|torbox_auth|no_secrets|origin|bad_item|unexpected_host)$|^cache_check_|^yt_153|network|fetch|load failed|timed? ?out|offline|abort/i;
 export const isSetupReason = (r) => SETUP_RE.test(String(r));
 
 export function recordFailure(failed, item, reasons = [], now = Date.now()) {
@@ -128,4 +128,30 @@ export function hiddenByFailure(failed, now = Date.now()) {
     if (f.type !== 'series' || live.length >= SERIES_FAILS_TO_HIDE) titles.add(titleId);
   }
   return { titles, videos };
+}
+
+// First run: home is never empty. Until she hearts a show (or a parent pins one), My shows holds the first
+// 8 titles of Kids Corner's curated Shows row, in catalog order.
+export const STARTER_COUNT = 8;
+export function starterShows(showsRow, { favs = [], pinned = [], hidden = new Set() } = {}) {
+  if (favs.length || pinned.length) return [];
+  return (showsRow || []).filter(t => t?.id && !hidden.has(t.id)).slice(0, STARTER_COUNT);
+}
+
+// New titles: the first run records every catalog title as the baseline (0); a title first seen later keeps
+// that time and shows in New for 30 days, in catalog order.
+export const NEW_DAYS = 30;
+export function updateSeen(seen, ids, now = Date.now()) {
+  const base = !seen;
+  const out = { ...(seen || {}) };
+  for (const id of ids) if (!(id in out)) out[id] = base ? 0 : now;
+  return out;
+}
+export function newTitles(orderedIds, seen, now = Date.now()) {
+  const out = [];
+  for (const id of orderedIds) {
+    const at = seen?.[id];
+    if (at > 0 && now - at < NEW_DAYS * 86400000 && !out.includes(id)) out.push(id);
+  }
+  return out;
 }

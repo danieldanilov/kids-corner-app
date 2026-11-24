@@ -10,11 +10,11 @@
   --pom: #A6E3C6; --pom-deep: #5FBF97; --pom-line: #3E8F70; --pom-cheek: #F59A9A;
   --gutter: 32px; --ease-pop: cubic-bezier(.34,1.56,.64,1);
   --font: 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, sans-serif;
-  color-scheme: light;
+  color-scheme: only light;   /* light only: the system's dark mode never changes the app; bedtime is the one dark look */
 }
 :root[data-theme="bedtime"] {
   --paper: #1E2046; --paper-2: #2A2D5C; --card: #33366A; --ink: #EDE8FF; --ink-2: #B9B3D9;
-  --lip: rgba(0,0,0,.35); --focus: #EDE8FF; --player-bg: #0B0B18;
+  --lip: rgba(0,0,0,.35); --focus: #EDE8FF; --player-bg: #0B0B18;  /* bedtime, set by the app, never by the system */
   --c-shows: #3F6E9E; --l-shows: #2C5480; --c-movies: #8E4F6E; --l-movies: #6F3A55;
   --c-bedtime: #5557A8; --l-bedtime: #3F4189; --c-youtube: #9C5A4C; --l-youtube: #7A4337;
   --c-stories: #B08A3A; --l-stories: #8A6A26; --c-russian: #2F8068; --l-russian: #22604E;

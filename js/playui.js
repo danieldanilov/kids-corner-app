@@ -290,7 +290,7 @@ export function createPlayUI(app) {
     // Goodbye card: 5 s in the category colour, Pom waving (spec 7).
     overlay.innerHTML = `<div class="goodbye" data-cat="${app.bedtime ? 'bedtime' : c.cat}">
       <button class="round-btn card-back tapable" aria-label="back">${ICONS.back}</button>
-      <div class="goodbye-pom">${pom(app.bedtime ? 'night' : 'day', 'wavel')}</div></div>`;
+      <div class="goodbye-pom pom-pokeable">${pom(app.bedtime ? 'night' : 'day', 'wavel')}</div></div>`;
     overlay.classList.add('open');
     show(false);
     let done = false;
@@ -319,7 +319,7 @@ export function createPlayUI(app) {
     logPlay({ endReason: 'failed', failures: reasons }, c);
     if (ctx === c) { teardown(); ctx = null; }
     app.playing = false;
-    overlay.innerHTML = `<div class="sleeping-card" data-cat="${app.bedtime ? 'bedtime' : c.cat}"><button class="round-btn card-back tapable" aria-label="back">${ICONS.back}</button><div class="goodbye-pom">${pom('sleep')}</div></div>`;
+    overlay.innerHTML = `<div class="sleeping-card" data-cat="${app.bedtime ? 'bedtime' : c.cat}"><button class="round-btn card-back tapable" aria-label="back">${ICONS.back}</button><div class="goodbye-pom pom-pokeable">${pom('sleep')}</div></div>`;
     overlay.classList.add('open');
     show(false);
     let skip;

@@ -141,7 +141,8 @@ export function playItemFor(title, video, { lang = 'en', stream = null, altNames
   if (kind === 'torbox') {
     const isSeries = title.type === 'series';
     return { ...base, imdbId: title.id, season: isSeries ? video.season : undefined, episode: isSeries ? video.episode : undefined,
-      videoId: isSeries ? video.id : title.id, runtimeMin: parseRuntime(title.runtime), episodeTitle: video?.title || '' };
+      videoId: isSeries ? video.id : title.id, runtimeMin: parseRuntime(title.runtime), episodeTitle: video?.title || '',
+      seasonCount: isSeries && title.seasonCount > 0 ? title.seasonCount : undefined, episodeName: isSeries ? (video?.title || undefined) : undefined };
   }
   if (kind === 'youtube') return { ...base, videoId: video.id, ytId: stream?.ytId, episodeTitle: video.title || stream?.title || '' };
   return { ...base, videoId: video.id, url: stream?.url, episodeTitle: video.title || stream?.title || '', artwork: video.thumbnail || title.poster };
@@ -149,7 +150,8 @@ export function playItemFor(title, video, { lang = 'en', stream = null, altNames
 
 export async function loadTitle(type, id, { fetchJson = defaultFetchJson, now = new Date() } = {}) {
   const meta = (await fetchJson(metaUrl(type, id))).meta || {};
-  const title = { id, type, name: meta.name, poster: meta.poster, posterShape: meta.posterShape || 'poster', background: meta.background, runtime: meta.runtime, year: meta.year, releaseInfo: meta.releaseInfo };
+  const title = { id, type, name: meta.name, poster: meta.poster, posterShape: meta.posterShape || 'poster', background: meta.background, runtime: meta.runtime, year: meta.year, releaseInfo: meta.releaseInfo,
+    seasonCount: type === 'series' ? new Set((meta.videos || []).map(v => +v.season).filter(n => n > 0)).size : undefined };
   const videos = type === 'series' ? orderEpisodes(meta.videos, now)
     : type === 'movie' ? [{ id, title: meta.name, thumbnail: meta.background || meta.poster }]
       : channelVideos(meta);

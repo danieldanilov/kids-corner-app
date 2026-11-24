@@ -72,6 +72,8 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   let warm = null;
   let unlocked = false;
 
+  // options.muted: everything silent (automated checks, tests). The YouTube player is muted on ready.
+  if (o.muted) { if (video) video.muted = true; if (audio) audio.muted = true; }
   if (video) {
     video.playsInline = true;
     video.setAttribute('playsinline', '');
@@ -83,7 +85,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   }
   if (ytContainer) {
     // Created early so the first YouTube tap lands on a ready player.
-    try { yt = createYouTubeHost(ytContainer); } catch { yt = null; }
+    try { yt = createYouTubeHost(ytContainer, { muted: !!o.muted }); } catch { yt = null; }
   }
 
   function unlock() {
@@ -523,7 +525,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       const t = yt.time(), d = yt.duration();
       if (started) rep.watchedSec = Math.max(rep.watchedSec, Math.round(t - startAt));
       if (started && Math.abs(t - lastEmit) >= 1) { lastEmit = t; emit('time', { position: t, duration: d || null }); }
-      if (started && !endedByUs && d > 0 && t >= d - o.ytEndGuardSec && yt.state() === YT_STATE.PLAYING) endNow();
+      
     }, 250);
     yt.setHandler({
       onState(st) {
@@ -557,12 +559,16 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     emit('progress', { fraction: null, stage: 'buffer' });
     const sync = yt.load(item.ytId || item.videoId, startAt || 0);
     if (!sync) rep.ytLoadedLate = true;
-    needsTapT = setTimeout(() => {
-      if (!started) {
-        // iOS refused a programmatic start: let her tap YouTube's own play button.
-        rep.needsTap = true; yt.show(true); emit('needs-tap', {});
-      }
-    }, o.ytNeedsTapMs + (sync ? 0 : 3000));
+    // If the player is still unstarted or cued after a moment, iOS refused the programmatic start: show it so
+    // she can tap YouTube's own play button. While it is buffering it is simply loading, so keep waiting.
+    let tapChecks = 0;
+    const checkTap = () => {
+      if (started) return;
+      const st = yt.state();
+      if ((st === YT_STATE.BUFFERING || st === undefined) && ++tapChecks < 6) { needsTapT = setTimeout(checkTap, 1500); return; }
+      if (st === YT_STATE.UNSTARTED || st === YT_STATE.CUED || tapChecks >= 6) { rep.needsTap = true; yt.show(true); emit('needs-tap', {}); }
+    };
+    needsTapT = setTimeout(checkTap, o.ytNeedsTapMs + (sync ? 0 : 3000));
     s._ctl.pause = () => { yt.show(false); yt.pause(); };
     s._ctl.resume = () => { endedByUs = false; yt.play(); };
     s._ctl.seek = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
@@ -610,10 +616,17 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     });
   }
 
+  function setMuted(on) {
+    if (video) video.muted = !!on;
+    if (audio) audio.muted = !!on;
+    if (yt) (on ? yt.mute() : yt.unMute());
+  }
+
   return {
     unlock,
     prefetch,
     play,
+    setMuted,
     engineMode: () => engine.mode(),
     hasMediaSource: () => !!mediaSourceClass(),
   };

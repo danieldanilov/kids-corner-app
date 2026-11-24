@@ -57,6 +57,8 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
     loadIndex,
     has,
     langsFor(key) {
+      // A title is spoken once, as written in the catalog (only that language's clip exists).
+      if (key.startsWith('title.')) { const l = ['en', 'ru'].find(x => has(x, key)); return l ? [l] : []; }
       const order = settings.namesLang === 'en' ? ['en'] : settings.namesLang === 'ru' ? ['ru'] : ['en', 'ru'];
       return order.filter(l => has(l, key));
     },

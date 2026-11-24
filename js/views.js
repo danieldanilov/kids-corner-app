@@ -1,7 +1,7 @@
 // Her screens: home, category, show/movie/channel pages, rest, good night, the how-many picker (spec 4, 8).
 import { CATEGORIES, BEDTIME_ROWS, kindOf } from './data.js';
 import { keepWatching, myShows, isFinished, showsAllowed } from './rules.js';
-import { pom, CHIP_ART, ROW_ART, ICONS, CUSHION } from './art.js';
+import { pom, CHIP_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const portrait = () => matchMedia('(orientation: portrait)').matches;
@@ -66,7 +66,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     const tiles = vis.map(({ t, p }) => posterHtml(t, app, { progress: p ? Math.min(1, p.position / (p.duration || 1)) : null, data: `data-act="${p ? 'resume' : 'title'}" data-type="${esc(t.type)}" data-id="${esc(t.id)}" ${p ? `data-key="${esc(p.key)}"` : ''}` })).join('');
     const ghost = r.ghost && !r.items.length ? `<div class="poster ghost">${ICONS.heart}</div>` : '';
     return `<div class="row" data-row="${r.key}">
-      <button class="sign tapable" data-act="sign" data-key="${r.sign}" aria-label="${r.key}"><span class="art">${ROW_ART[r.key]}</span></button>
+      <button class="sign tapable" data-act="sign" data-key="${r.sign}" aria-label="${r.key}"><span class="art">${ROW_ART[r.key]}</span><span class="word">${ROW_LABEL[r.key]}</span></button>
       ${left ? `<button class="poster arrow-tile tapable" data-act="rowpage" data-row="${r.key}" data-dir="-1" aria-label="back">${ICONS.left}</button>` : ''}
       ${tiles}${ghost}
       ${more ? `<button class="poster arrow-tile tapable" data-act="rowpage" data-row="${r.key}" data-dir="1" aria-label="more">${ICONS.right}</button>` : ''}
@@ -87,7 +87,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'pom') {
-      const tile = b; tile.innerHTML = pom(app.bedtime ? 'night' : 'wave', 'waving');
+      const tile = b; tile.innerHTML = pom(app.bedtime ? 'night' : 'wave');
       app.speak('ui.hi');
       setTimeout(() => { tile.innerHTML = pom(app.bedtime ? 'night' : 'day', 'breathe'); }, 900);
     } else if (act === 'cat') { app.effect('chip'); app.speak('cat.' + b.dataset.id); app.go('#/c/' + b.dataset.id); }

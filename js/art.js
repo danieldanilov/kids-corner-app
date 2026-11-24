@@ -1,85 +1,64 @@
-// Inline SVG art: Pom the companion, chip pictures, row signs and the control icons (spec 3, 4.1, 4.5).
-const svg = (vb, body, cls = '') => `<svg viewBox="${vb}" class="${cls}" aria-hidden="true" focusable="false">${body}</svg>`;
+// Inline SVG art, ported from the Designer's prototype (design/mockup.html): Pom, chip pictures, row signs, icons.
+const I = {
+ tv:`<svg viewBox="0 0 72 72"><circle cx="20" cy="15" r="8" fill="#4D97C6"/><circle cx="52" cy="15" r="8" fill="#4D97C6"/><rect x="8" y="18" width="56" height="42" rx="12" fill="#fff"/><rect x="15" y="25" width="42" height="28" rx="7" fill="#2B2541"/><circle cx="29" cy="37" r="3" fill="#fff"/><circle cx="43" cy="37" r="3" fill="#fff"/><path d="M31 44q5 4 10 0" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/><rect x="22" y="60" width="6" height="7" rx="2" fill="#fff"/><rect x="44" y="60" width="6" height="7" rx="2" fill="#fff"/></svg>`,
+ popcorn:`<svg viewBox="0 0 72 72"><circle cx="24" cy="22" r="10" fill="#FFF6DA"/><circle cx="36" cy="16" r="11" fill="#FFF6DA"/><circle cx="48" cy="22" r="10" fill="#FFF6DA"/><circle cx="30" cy="26" r="9" fill="#FFE8A8"/><circle cx="43" cy="27" r="9" fill="#FFE8A8"/><path d="M14 30h44l-6 36H20z" fill="#fff"/><path d="M22 30h7l1 36h-7zM36 30h7l-1 36h-7z" fill="#E35E7E"/></svg>`,
+ moon:`<svg viewBox="0 0 72 72"><path d="M44 10a26 26 0 1 0 18 40A22 22 0 0 1 44 10z" fill="#FFF3C4"/><circle cx="34" cy="38" r="2.6" fill="#6466BA"/><path d="M24 44q4 3 8 0" stroke="#6466BA" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M56 12l2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z" fill="#FFF3C4"/></svg>`,
+ yt:`<svg viewBox="0 0 72 72"><rect x="6" y="14" width="60" height="44" rx="16" fill="#fff"/><path d="M30 26l16 10-16 10z" fill="#DE7658"/><circle cx="24" cy="24" r="3" fill="#2B2541"/><circle cx="48" cy="24" r="3" fill="#2B2541"/></svg>`,
+ book:`<svg viewBox="0 0 72 72"><path d="M36 26c-8-6-18-6-28-4v34c10-2 20-2 28 4z" fill="#fff"/><path d="M36 26c8-6 18-6 28-4v34c-10-2-20-2-28 4z" fill="#FFF6DA"/><path d="M36 26v34" stroke="#DDA634" stroke-width="2.5"/><path d="M28 14q8-6 16 0M24 8q12-9 24 0" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>`,
+ doll:`<svg viewBox="0 0 72 72"><ellipse cx="36" cy="48" rx="20" ry="20" fill="#E8736A"/><circle cx="36" cy="24" r="15" fill="#E8736A"/><circle cx="36" cy="25" r="10" fill="#FFE3CF"/><circle cx="32" cy="24" r="1.8" fill="#2B2541"/><circle cx="40" cy="24" r="1.8" fill="#2B2541"/><circle cx="30.5" cy="28" r="2" fill="#F59A9A"/><circle cx="41.5" cy="28" r="2" fill="#F59A9A"/><ellipse cx="36" cy="50" rx="11" ry="12" fill="#FFF6DA"/><circle cx="36" cy="48" r="5" fill="#FFD064"/></svg>`,
+ bus:`<svg viewBox="0 0 72 72"><rect x="8" y="10" width="56" height="48" rx="10" fill="#E8736A"/><rect x="14" y="16" width="12" height="10" rx="3" fill="#E8F7FF"/><rect x="30" y="16" width="12" height="10" rx="3" fill="#E8F7FF"/><rect x="46" y="16" width="12" height="10" rx="3" fill="#E8F7FF"/><rect x="14" y="33" width="12" height="10" rx="3" fill="#E8F7FF"/><rect x="30" y="33" width="12" height="10" rx="3" fill="#E8F7FF"/><rect x="46" y="33" width="12" height="16" rx="3" fill="#E8F7FF"/><rect x="8" y="29" width="56" height="2.5" fill="#C9564F"/><circle cx="22" cy="60" r="7" fill="#2B2541"/><circle cx="52" cy="60" r="7" fill="#2B2541"/></svg>`,
+ heart:`<svg viewBox="0 0 64 64"><path class="hf" d="M32 54S8 40 8 23a12 12 0 0 1 24-4 12 12 0 0 1 24 4c0 17-24 31-24 31z" fill="#F2708F" stroke="#F2708F" stroke-width="4" stroke-linejoin="round"/></svg>`,
+ heartO:`<svg viewBox="0 0 64 64"><path class="hf" d="M32 54S8 40 8 23a12 12 0 0 1 24-4 12 12 0 0 1 24 4c0 17-24 31-24 31z" stroke="#F2708F" stroke-width="5" stroke-linejoin="round"/></svg>`,
+ half:`<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="none" stroke="currentColor" stroke-width="5" opacity=".35"/><path d="M32 8a24 24 0 0 1 0 48" fill="none" stroke="#4D97C6" stroke-width="6" stroke-linecap="round"/><path d="M26 22l14 10-14 10z" fill="currentColor"/></svg>`,
+ sprout:`<svg viewBox="0 0 64 64"><path d="M32 56V30" stroke="#41A684" stroke-width="5" stroke-linecap="round"/><path d="M32 34c-2-12-12-16-20-14 0 10 8 16 20 14zM32 30c2-12 12-16 20-14 0 10-8 16-20 14z" fill="#72D0AF"/><path d="M18 56h28" stroke="#C88F5A" stroke-width="5" stroke-linecap="round"/></svg>`,
+ house:`<svg viewBox="0 0 64 64"><path d="M10 30L32 11l22 19" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 27v24a3 3 0 0 0 3 3h26a3 3 0 0 0 3-3V27" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/><rect x="27" y="38" width="10" height="16" rx="3" fill="currentColor"/></svg>`,
+ back:`<svg viewBox="0 0 64 64"><path d="M38 14L20 32l18 18" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ left:`<svg viewBox="0 0 64 64"><path d="M38 14L20 32l18 18" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ right:`<svg viewBox="0 0 64 64"><path d="M26 14l18 18-18 18" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ play:`<svg viewBox="0 0 64 64"><path d="M22 14l28 18-28 18z" fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/></svg>`,
+ pause:`<svg viewBox="0 0 64 64"><rect x="16" y="14" width="11" height="36" rx="4" fill="currentColor"/><rect x="37" y="14" width="11" height="36" rx="4" fill="currentColor"/></svg>`,
+ rew:`<svg viewBox="0 0 64 64"><path d="M18 22A18 18 0 1 1 14 36" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M10 12l8 12 12-6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="40" font-size="15" font-weight="900" text-anchor="middle" fill="currentColor" font-family="Nunito">15</text></svg>`,
+ fwd:`<svg viewBox="0 0 64 64"><path d="M46 22A18 18 0 1 0 50 36" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M54 12l-8 12-12-6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><text x="30" y="40" font-size="15" font-weight="900" text-anchor="middle" fill="currentColor" font-family="Nunito">15</text></svg>`,
+ next:`<svg viewBox="0 0 64 64"><path d="M16 16l24 16-24 16z" fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><rect x="44" y="14" width="8" height="36" rx="3" fill="currentColor"/></svg>`,
+ again:`<svg viewBox="0 0 64 64"><path d="M49 34A17 17 0 1 1 43 21" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M49 27L36 25L46 14z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`,
+ check:`<svg viewBox="0 0 64 64"><path d="M14 34l12 12 24-26" fill="none" stroke="#41A684" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ lock:`<svg class="lk" viewBox="0 0 40 40"><rect x="8" y="17" width="24" height="18" rx="5" fill="currentColor"/><path d="M13 17v-4a7 7 0 0 1 14 0v4" fill="none" stroke="currentColor" stroke-width="3.5"/></svg>`,
+ speaker:`<svg viewBox="0 0 32 32"><path d="M6 12h5l7-6v20l-7-6H6z" fill="#2B2541"/><path d="M22 11q4 5 0 10M25 8q7 8 0 16" stroke="#2B2541" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`,
+};
 
-// Pom: a round apricot puff. mood: 'day' | 'night' | 'sleep' | 'wave'
+const withClass = (s, cls) => /^<svg class="/.test(s) ? s.replace('<svg class="', `<svg class="${cls} `) : s.replace('<svg ', `<svg class="${cls}" `);
+
+// Pom, the companion (spec 3). mood: 'day' | 'night' | 'sleep' | 'wave'
+function pomSvg(cls = '') {return `<svg class="pom ${cls}" viewBox="0 0 200 200" aria-label="Pom">
+ <g class="pom-b">
+  <circle cx="56" cy="64" r="21" fill="#DE8C4E"/><circle cx="144" cy="64" r="21" fill="#DE8C4E"/>
+  <circle cx="56" cy="64" r="10" fill="#F59A9A" opacity=".55"/><circle cx="144" cy="64" r="10" fill="#F59A9A" opacity=".55"/>
+  <g class="arm-l"><ellipse cx="34" cy="138" rx="14" ry="20" fill="#DE8C4E"/></g>
+  <ellipse cx="72" cy="182" rx="20" ry="11" fill="#DE8C4E"/><ellipse cx="128" cy="182" rx="20" ry="11" fill="#DE8C4E"/>
+  <ellipse cx="100" cy="120" rx="72" ry="64" fill="#F5A96A"/>
+  <ellipse cx="100" cy="146" rx="40" ry="28" fill="#FBC796"/>
+  <g class="arm-r"><ellipse cx="164" cy="140" rx="14" ry="20" fill="#DE8C4E"/></g>
+  <path class="tuft" d="M96 58c-8-16 2-26 12-22 8 3 6 12-1 12" fill="none" stroke="#DE8C4E" stroke-width="7" stroke-linecap="round"/>
+  <g class="eyes"><circle cx="78" cy="110" r="7.5" fill="#2B2541"/><circle cx="122" cy="110" r="7.5" fill="#2B2541"/><circle cx="80.5" cy="107.5" r="2.4" fill="#fff"/><circle cx="124.5" cy="107.5" r="2.4" fill="#fff"/></g>
+  <g class="eyes-c" style="display:none"><path d="M70 111q8 6 16 0M114 111q8 6 16 0" stroke="#2B2541" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+  <ellipse cx="62" cy="128" rx="11" ry="7" fill="#F59A9A"/><ellipse cx="138" cy="128" rx="11" ry="7" fill="#F59A9A"/>
+  <path d="M92 127q8 8 16 0" stroke="#2B2541" stroke-width="4" fill="none" stroke-linecap="round"/>
+ </g>
+ <g class="cap"><path d="M44 74C50 30 110 14 150 52c8 8 4 18-4 16C120 52 80 50 50 82z" fill="#4B4FA8"/><path d="M146 52c16 4 24 20 22 36" fill="none" stroke="#4B4FA8" stroke-width="14" stroke-linecap="round"/><circle cx="168" cy="94" r="12" fill="#EDE8FF"/><path d="M80 44l2.4 4.8 5.2.7-3.8 3.7.9 5.2-4.7-2.5-4.7 2.5.9-5.2-3.8-3.7 5.2-.7z" fill="#FFF3C4"/><path d="M112 34l2 4 4.4.6-3.2 3.1.8 4.4-4-2.1-4 2.1.8-4.4-3.2-3.1 4.4-.6z" fill="#FFF3C4"/></g>
+</svg>`}
 export function pom(mood = 'day', cls = '') {
-  const night = mood === 'night' || mood === 'sleep';
-  const eyes = mood === 'sleep'
-    ? '<path d="M70 104q8 6 16 0M114 104q8 6 16 0" stroke="#2B2541" stroke-width="5" fill="none" stroke-linecap="round"/>'
-    : night
-      ? '<path d="M70 102h16M114 102h16" stroke="#2B2541" stroke-width="6" stroke-linecap="round"/><circle cx="78" cy="106" r="5" fill="#2B2541"/><circle cx="122" cy="106" r="5" fill="#2B2541"/>'
-      : '<circle cx="78" cy="102" r="7" fill="#2B2541"/><circle cx="122" cy="102" r="7" fill="#2B2541"/><circle cx="80" cy="99" r="2.2" fill="#fff"/><circle cx="124" cy="99" r="2.2" fill="#fff"/>';
-  const cap = night
-    ? `<path d="M52 70Q60 18 128 22q30 4 44 40Q130 40 52 70z" fill="#4A4C9A"/><path d="M52 70q60-26 120-8" stroke="#3A3C82" stroke-width="8" fill="none" stroke-linecap="round"/>
-       <circle cx="176" cy="66" r="11" fill="#EDE8FF"/><path d="M100 36l3 6 6 1-5 4 1 6-5-3-5 3 1-6-5-4 6-1z" fill="#FFE9A8"/><path d="M134 40l2 4 4 1-3 3 1 4-4-2-4 2 1-4-3-3 4-1z" fill="#FFE9A8"/>` : '';
-  const arm = mood === 'wave'
-    ? '<g class="pom-arm"><ellipse cx="166" cy="104" rx="13" ry="22" fill="#F5A96A" transform="rotate(-30 166 124)"/></g>'
-    : '<ellipse cx="168" cy="132" rx="12" ry="18" fill="#F5A96A" transform="rotate(-20 168 132)"/>';
-  return svg('0 0 200 200', `
-    <g class="pom-body">
-      <ellipse cx="100" cy="178" rx="64" ry="9" fill="rgba(43,37,65,.12)"/>
-      <circle cx="58" cy="58" r="17" fill="#DE8C4E"/><circle cx="142" cy="58" r="17" fill="#DE8C4E"/>
-      <ellipse cx="100" cy="112" rx="74" ry="64" fill="#F5A96A"/>
-      <path d="M92 52q8-18 20-6" stroke="#DE8C4E" stroke-width="7" fill="none" stroke-linecap="round"/>
-      <ellipse cx="32" cy="132" rx="12" ry="18" fill="#F5A96A" transform="rotate(20 32 132)"/>
-      ${arm}
-      ${eyes}
-      <ellipse cx="62" cy="124" rx="11" ry="7" fill="#F59A9A" opacity=".85"/><ellipse cx="138" cy="124" rx="11" ry="7" fill="#F59A9A" opacity=".85"/>
-      <path d="M90 122q10 10 20 0" stroke="#2B2541" stroke-width="5" fill="none" stroke-linecap="round"/>
-      ${cap}
-    </g>`, 'pom ' + cls);
+  const m = { day: '', night: 'night', sleep: 'asleep night', wave: 'wave' }[mood] ?? '';
+  return pomSvg(`${m} ${cls}`.trim());
 }
 
-const ink = '#2B2541';
-// Chip pictures, picture first (spec 4.1).
-export const CHIP_ART = {
-  shows: svg('0 0 100 100', `<path d="M36 22l-10-12M64 22l10-12" stroke="${ink}" stroke-width="5" stroke-linecap="round"/><circle cx="25" cy="10" r="5" fill="${ink}"/><circle cx="75" cy="10" r="5" fill="${ink}"/>
-    <rect x="12" y="24" width="76" height="56" rx="14" fill="#fff" stroke="${ink}" stroke-width="5"/><rect x="22" y="33" width="56" height="38" rx="8" fill="#BFE6FF"/>
-    <circle cx="40" cy="50" r="4" fill="${ink}"/><circle cx="60" cy="50" r="4" fill="${ink}"/><path d="M43 60q7 6 14 0" stroke="${ink}" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M30 80l-6 10M70 80l6 10" stroke="${ink}" stroke-width="5" stroke-linecap="round"/>`),
-  movies: svg('0 0 100 100', `<circle cx="34" cy="26" r="12" fill="#FFF6D8"/><circle cx="52" cy="20" r="13" fill="#FFF6D8"/><circle cx="68" cy="28" r="12" fill="#FFF6D8"/><circle cx="46" cy="32" r="10" fill="#FFF0BF"/>
-    <path d="M22 34h56l-8 56H30z" fill="#fff" stroke="${ink}" stroke-width="5" stroke-linejoin="round"/><path d="M38 36l3 52M60 36l-3 52" stroke="#EE8FAB" stroke-width="8"/>`),
-  bedtime: svg('0 0 100 100', `<path d="M62 14a36 36 0 1 0 24 56A30 30 0 0 1 62 14z" fill="#FFF3C4" stroke="${ink}" stroke-width="5" stroke-linejoin="round"/>
-    <path d="M74 20l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" fill="#fff" stroke="${ink}" stroke-width="3" stroke-linejoin="round"/><path d="M38 58q5 4 10 0" stroke="${ink}" stroke-width="4" fill="none" stroke-linecap="round"/>`),
-  youtube: svg('0 0 100 100', `<rect x="10" y="22" width="80" height="58" rx="18" fill="#fff" stroke="${ink}" stroke-width="5"/><path d="M42 36l24 15-24 15z" fill="#FF9E7C" stroke="${ink}" stroke-width="4" stroke-linejoin="round"/>
-    <circle cx="28" cy="40" r="3.5" fill="${ink}"/><circle cx="28" cy="58" r="3.5" fill="${ink}" opacity="0"/>`),
-  stories: svg('0 0 100 100', `<path d="M50 34q-16-10-38-8v50q22-2 38 8q16-10 38-8V26q-22-2-38 8z" fill="#fff" stroke="${ink}" stroke-width="5" stroke-linejoin="round"/><path d="M50 34v50" stroke="${ink}" stroke-width="4"/>
-    <path d="M70 14q8 6 0 14M78 8q14 12 0 26" stroke="${ink}" stroke-width="4" fill="none" stroke-linecap="round"/>`),
-  russian: svg('0 0 100 100', `<ellipse cx="50" cy="66" rx="28" ry="26" fill="#fff" stroke="${ink}" stroke-width="5"/><circle cx="50" cy="30" r="20" fill="#fff" stroke="${ink}" stroke-width="5"/>
-    <circle cx="50" cy="32" r="11" fill="#FFE3CF"/><circle cx="46" cy="31" r="2" fill="${ink}"/><circle cx="54" cy="31" r="2" fill="${ink}"/><circle cx="44" cy="36" r="2.5" fill="#F59A9A"/><circle cx="56" cy="36" r="2.5" fill="#F59A9A"/>
-    <path d="M40 66q10-12 20 0q-10 14-20 0z" fill="#72D0AF"/><circle cx="50" cy="66" r="4" fill="#FFD064"/>`),
-  british: svg('0 0 100 100', `<rect x="12" y="18" width="76" height="62" rx="12" fill="#fff" stroke="${ink}" stroke-width="5"/><path d="M12 48h76" stroke="${ink}" stroke-width="4"/>
-    <rect x="20" y="26" width="16" height="14" rx="3" fill="#BFE6FF"/><rect x="42" y="26" width="16" height="14" rx="3" fill="#BFE6FF"/><rect x="64" y="26" width="16" height="14" rx="3" fill="#BFE6FF"/>
-    <rect x="20" y="55" width="16" height="14" rx="3" fill="#BFE6FF"/><rect x="42" y="55" width="16" height="14" rx="3" fill="#BFE6FF"/><circle cx="30" cy="84" r="8" fill="${ink}"/><circle cx="70" cy="84" r="8" fill="${ink}"/>`),
-};
+export const CHIP_ART = { shows: I.tv, movies: I.popcorn, bedtime: I.moon, youtube: I.yt, stories: I.book, russian: I.doll, british: I.bus };
+export const ROW_ART = { myshows: I.heart, keep: I.half, new: I.sprout, stories: I.book, sleepyshows: I.moon, sleepyvideos: I.yt };
+export const ROW_LABEL = { myshows: 'My shows', keep: 'Keep watching', new: 'New', stories: 'Stories', sleepyshows: 'Sleepy shows', sleepyvideos: 'Sleepy videos' };
+export const ICONS = Object.fromEntries(Object.entries({
+  home: I.house, back: I.back, play: I.play, pause: I.pause, back15: I.rew, fwd15: I.fwd, next: I.next, again: I.again,
+  heart: I.heartO, heartFull: I.heart, lock: I.lock, left: I.left, right: I.right, check: I.check,
+}).map(([k, v]) => [k, withClass(v, 'icon')]));
 
-export const ROW_ART = {
-  myshows: svg('0 0 100 100', `<path d="M50 82S14 60 14 36a18 18 0 0 1 36-6a18 18 0 0 1 36 6c0 24-36 46-36 46z" fill="#F59A9A" stroke="${ink}" stroke-width="5" stroke-linejoin="round"/>`),
-  keep: svg('0 0 100 100', `<circle cx="50" cy="50" r="36" fill="#fff" stroke="${ink}" stroke-width="5"/><path d="M50 14a36 36 0 0 1 0 72z" fill="#BFE6FF"/><circle cx="50" cy="50" r="36" fill="none" stroke="${ink}" stroke-width="5"/><path d="M42 36l20 14-20 14z" fill="${ink}"/>`),
-  new: svg('0 0 100 100', `<path d="M50 86V48" stroke="#5B9A3A" stroke-width="6" stroke-linecap="round"/><path d="M50 56q-30 0-30-26q28 0 30 26z" fill="#A8D56E" stroke="${ink}" stroke-width="4"/><path d="M50 48q24-2 28-26q-26 0-28 26z" fill="#A8D56E" stroke="${ink}" stroke-width="4"/><path d="M30 86h40" stroke="${ink}" stroke-width="5" stroke-linecap="round"/>`),
-  stories: null, sleepyshows: null, sleepyvideos: null,
-};
-ROW_ART.stories = CHIP_ART.stories;
-ROW_ART.sleepyshows = CHIP_ART.bedtime;
-ROW_ART.sleepyvideos = CHIP_ART.youtube;
+// Cushion for the end of a shelf and the sleeping screens.
+export const CUSHION = '<svg viewBox="0 0 200 60" class="cushion" aria-hidden="true"><ellipse cx="100" cy="36" rx="92" ry="22" fill="#C9B6E8"/><ellipse cx="100" cy="30" rx="84" ry="16" fill="#DCCDF5"/></svg>';
 
-const icon = (body) => svg('0 0 64 64', body, 'icon');
-const st = 'stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"';
-export const ICONS = {
-  home: icon(`<path d="M10 30L32 12l22 18" ${st}/><path d="M16 26v24h32V26" ${st}/><path d="M27 50V38h10v12" ${st}/>`),
-  back: icon(`<path d="M40 12L20 32l20 20" ${st}/>`),
-  play: icon('<path d="M22 12l28 20-28 20z" fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/>'),
-  pause: icon('<rect x="16" y="12" width="11" height="40" rx="4" fill="currentColor"/><rect x="37" y="12" width="11" height="40" rx="4" fill="currentColor"/>'),
-  back15: icon(`<path d="M18 22a20 20 0 1 1-4 18" ${st}/><path d="M12 10v14h14" ${st}/><text x="33" y="40" text-anchor="middle" font-size="16" font-weight="900" fill="currentColor" font-family="Nunito,system-ui">15</text>`),
-  fwd15: icon(`<path d="M46 22a20 20 0 1 0 4 18" ${st}/><path d="M52 10v14H38" ${st}/><text x="31" y="40" text-anchor="middle" font-size="16" font-weight="900" fill="currentColor" font-family="Nunito,system-ui">15</text>`),
-  next: icon('<path d="M14 12l26 20-26 20z" fill="currentColor"/><rect x="42" y="12" width="9" height="40" rx="3" fill="currentColor"/>'),
-  again: icon(`<path d="M50 32a18 18 0 1 1-6-13.4" ${st}/><path d="M46 8v12H34" ${st}/>`),
-  heart: icon('<path d="M32 54S8 40 8 23a12 12 0 0 1 24-4a12 12 0 0 1 24 4c0 17-24 31-24 31z" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>'),
-  heartFull: icon('<path d="M32 54S8 40 8 23a12 12 0 0 1 24-4a12 12 0 0 1 24 4c0 17-24 31-24 31z" fill="#F07A8E" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>'),
-  lock: icon('<rect x="14" y="28" width="36" height="26" rx="6" fill="currentColor"/><path d="M22 28v-8a10 10 0 0 1 20 0v8" stroke="currentColor" stroke-width="6" fill="none"/>'),
-  left: icon(`<path d="M38 14L20 32l18 18" ${st}/>`),
-  right: icon(`<path d="M26 14l18 18-18 18" ${st}/>`),
-  check: icon('<path d="M14 34l12 12 24-26" stroke="currentColor" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
-};
-
-// Cushion for the end of a shelf and the good night screen.
-export const CUSHION = svg('0 0 200 60', '<ellipse cx="100" cy="36" rx="92" ry="22" fill="#C9B6E8"/><ellipse cx="100" cy="30" rx="84" ry="16" fill="#DCCDF5"/>', 'cushion');

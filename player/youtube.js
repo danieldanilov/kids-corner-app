@@ -29,7 +29,7 @@ export const YT_PLAYER_VARS = {
   autoplay: 0, enablejsapi: 1,
 };
 
-export function createYouTubeHost(container) {
+export function createYouTubeHost(container, { muted = false } = {}) {
   const mount = document.createElement('div');
   mount.style.cssText = 'width:100%;height:100%';
   container.appendChild(mount);
@@ -43,7 +43,7 @@ export function createYouTubeHost(container) {
       width: '100%', height: '100%',
       playerVars: { ...YT_PLAYER_VARS, origin: location.origin },
       events: {
-        onReady: () => { ready = true; resolve(); },
+        onReady: () => { if (muted) { try { player.mute(); } catch { /* ignore */ } } ready = true; resolve(); },
         onStateChange: e => handler?.onState?.(e.data),
         onError: e => handler?.onError?.(e.data),
       },
@@ -64,6 +64,9 @@ export function createYouTubeHost(container) {
       return false;
     },
     play() { player?.playVideo(); },
+    mute() { muted = true; try { player?.mute(); } catch { /* ignore */ } },
+    unMute() { muted = false; try { player?.unMute(); } catch { /* ignore */ } },
+    isMuted() { try { return !!player?.isMuted(); } catch { return null; } },
     pause() { player?.pauseVideo(); },
     seek(t) { player?.seekTo(t, true); },
     time() { try { return player?.getCurrentTime?.() || 0; } catch { return 0; } },

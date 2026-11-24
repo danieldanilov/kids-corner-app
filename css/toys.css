@@ -1,0 +1,114 @@
+/* Loading toys, ported from the Designer's prototype (design/mockup.html, spec 5.5), scoped under .mtoy. */
+.mtoy{position:absolute;inset:0}
+
+.mtoy .toy-bg{position:absolute;inset:0}
+.mtoy .stage{position:absolute;left:50%;top:50%;width:min(100vw,100vh);height:min(100vw,100vh);transform:translate(-50%,-50%);overflow:visible}
+.mtoy .owl,.mtoy .leaf,.mtoy .lid,.mtoy .wing,.mtoy .mlid,.mtoy .bub,.mtoy .bb,.mtoy .puff,.mtoy .bigbub,.mtoy .stem,.mtoy .leafx,.mtoy .can,.mtoy .sprout,.mtoy .blob,.mtoy .car,.mtoy .puffc,.mtoy .drop,.mtoy .trainset,.mtoy .trainmove,.mtoy .station,.mtoy .water,.mtoy .flower{transform-box:fill-box}
+.mtoy .hot{fill:transparent;cursor:pointer}
+.mtoy .owl-sky{background:linear-gradient(#3E5C8A,#6E9FD0 60%,#9CCBEB)}
+.mtoy .owl{transform-origin:50% 60%}
+.mtoy .owl.ruffle{animation:ruffle .5s ease-in-out}
+@keyframes ruffle{20%{transform:scale(1.06,.95)}45%{transform:scale(.96,1.05)}70%{transform:scale(1.03,.98)}}
+.mtoy .leaf{transform-origin:0% 50%}
+.mtoy .leaf.wig{animation:wig .5s ease-in-out}
+@keyframes wig{25%{transform:rotate(-14deg)}60%{transform:rotate(10deg)}}
+.mtoy .lid{transform-origin:50% 0%;transition:transform .25s linear}
+.mtoy .wing{transition:transform .3s ease-out}
+.mtoy .wing.l{transform-origin:90% 20%}
+.mtoy .wing.r{transform-origin:10% 20%}
+.mtoy.owl-go .wing.l{transform:rotate(55deg)}
+.mtoy.owl-go .wing.r{transform:rotate(-55deg)}
+.mtoy.owl-go .owl{transform:translateY(-140%);transition:transform .5s ease-in .3s}
+.mtoy.owl-go .owl-sky-l{transform:translateY(-100%);transition:transform .4s ease-in .8s}
+.mtoy .owl-sky-l{position:absolute;inset:0}
+.mtoy.owl-go .stage{transform:translate(-50%,-160%);transition:transform .4s ease-in .8s}
+.mtoy .cur{position:absolute;top:0;bottom:0;width:50.5%;background:
+  linear-gradient(90deg,rgba(0,0,0,.18),transparent 12%,transparent 88%,rgba(0,0,0,.18)),
+  repeating-linear-gradient(90deg,#B84A63 0 40px,#A23F57 40px 62px,#C1566E 62px 86px,#B84A63 86px 100px);
+  transform-origin:50% 0;transition:transform 1s ease-in-out}
+.mtoy .cur.l{left:0}
+.mtoy .cur.r{right:0;z-index:3}
+.mtoy .cur .rope{position:absolute;top:58%;width:34px;height:120px;border-radius:17px;background:linear-gradient(#F2C94C,#D9A92B);box-shadow:inset 0 0 0 4px rgba(0,0,0,.08)}
+.mtoy .cur.l .rope{left:30px}
+.mtoy .cur.r .rope{right:30px}
+.mtoy .cur.sway{animation:sway .6s ease-out}
+@keyframes sway{25%{transform:skewX(2.5deg)}55%{transform:skewX(-1.8deg)}80%{transform:skewX(.8deg)}}
+[data-motion="reduced"] .mtoy .cur.sway{animation:none;filter:brightness(1.12)}
+.mtoy .valance{position:absolute;left:0;right:0;top:0;height:118px;z-index:4;background:radial-gradient(circle at 50% 100%,transparent 38px,#8E3049 39px) 0 0/90px 100% repeat-x;transition:transform .6s ease-in}
+.mtoy .valance::before{content:"";position:absolute;left:0;right:0;top:0;height:78px;background:#8E3049}
+.mtoy .bulbs{position:absolute;left:50%;transform:translateX(-50%);transition:transform .6s ease-in;top:18px;display:flex;gap:min(7vw,92px);z-index:5}
+.mtoy .bulb{width:38px;height:38px;border-radius:50%;background:#6E2A3C;box-shadow:inset 0 0 0 4px rgba(255,255,255,.08);transition:background-color .4s,box-shadow .4s}
+.mtoy .bulb.on{background:#FFE7A3;box-shadow:0 0 18px 4px rgba(255,211,107,.75)}
+.mtoy .bulbs.loop .bulb{animation:bwave 3s ease-in-out infinite}
+@keyframes bwave{50%{background:#C9A15E}}
+.mtoy .peek{position:absolute;left:50%;top:44%;width:170px;height:170px;margin-left:-118px;z-index:2;transition:transform .5s ease-out,opacity .2s}
+.mtoy .peek.out{transform:translateX(-46px) rotate(-6deg)}
+.mtoy.cur-go .cur.l{transform:translateX(-102%)}
+.mtoy.cur-go .cur.r{transform:translateX(102%)}
+.mtoy.cur-go .valance,.mtoy.cur-go .bulbs{transform:translate(-50%,-140%)}
+.mtoy.cur-go .valance{transform:translateY(-140%)}
+.mtoy.cur-go .peek{opacity:0}
+.mtoy .moon-sky{background:radial-gradient(ellipse at 50% 30%,#262A66,#14163A 70%)}
+.mtoy .star .glow{opacity:0;transition:opacity 1s ease-in-out}
+.mtoy .star.lit .glow{opacity:.85}
+.mtoy .star .sp{transition:fill 1s}
+.mtoy .star.lit .sp{fill:#FFF6C8}
+.mtoy .mlid{transform-origin:50% 0%;transition:transform .3s linear}
+.mtoy.moon-go{opacity:0;transition:opacity 1.5s ease-in-out}
+.mtoy.moonloop .mlid{animation:mdrift 4s ease-in-out infinite}
+@keyframes mdrift{50%{transform:scaleY(.55)}}
+.mtoy .bub-sky{background:linear-gradient(#CFEBFF,#F4FBFF)}
+.mtoy .bub{animation:bob 4s ease-in-out infinite}
+.mtoy .bub:nth-child(2n){animation-duration:4.6s}
+.mtoy .bub:nth-child(3n){animation-duration:5.2s}
+@keyframes bob{50%{transform:translateY(-18px)}}
+[data-motion="reduced"] .mtoy .bub{animation:none}
+.mtoy .bub .bb{transform-origin:50% 50%;transition:transform .25s ease-out,opacity .25s ease-out}
+.mtoy .bub.popped .bb{transform:scale(1.3);opacity:0}
+.mtoy .bub.regrow .bb{transform:scale(.2);opacity:0;transition:none}
+.mtoy .bub .puff{opacity:0;transform-origin:50% 50%}
+.mtoy .bub.popped .puff{animation:puff .35s ease-out}
+@keyframes puff{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1.5)}}
+[data-motion="reduced"] .mtoy .bub.popped .bb{transform:none;opacity:.35}
+.mtoy .wandfill{transition:height .25s linear,y .25s linear}
+.mtoy .wandloop{animation:wl 2.4s ease-in-out infinite}
+@keyframes wl{50%{opacity:.45}}
+.mtoy .bigbub{transform-origin:50% 50%;opacity:0}
+.mtoy.bub-go .bigbub{opacity:1;animation:bigb .5s ease-out forwards}
+@keyframes bigb{from{transform:translate(-310px,60px) scale(.3)}to{transform:none}}
+.mtoy .sun-bg{background:linear-gradient(#FFF6E2,#FFE9C2)}
+.mtoy .stem{transform-origin:50% 100%;transition:transform .3s linear}
+.mtoy .flower{transition:transform .3s linear}
+.mtoy .leafx{transform-origin:0% 100%;transform:scale(0);transition:transform .5s cubic-bezier(.34,1.56,.64,1)}
+.mtoy .leafx.on{transform:scale(1)}
+.mtoy .can{transform-origin:80% 80%;transition:transform .25s ease-out}
+.mtoy .can.tip{transform:rotate(-28deg)}
+.mtoy .drop{opacity:0}
+.mtoy .can.tip ~ .drops .drop{animation:drop .5s ease-in forwards}
+.mtoy .drops .drop:nth-child(2){animation-delay:.08s!important}
+.mtoy .drops .drop:nth-child(3){animation-delay:.16s!important}
+@keyframes drop{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(120px)}}
+.mtoy .sprout.wig{animation:wig2 .5s ease-in-out}
+.mtoy .sprout{transform-origin:50% 100%}
+@keyframes wig2{25%{transform:rotate(-6deg)}60%{transform:rotate(5deg)}}
+.mtoy .jelly-bg{background:linear-gradient(#E6F8F0,#CDEFE2)}
+.mtoy .blob{transform-origin:50% 100%}
+.mtoy .blob.squish{animation:squish .6s cubic-bezier(.34,1.56,.64,1)}
+@keyframes squish{25%{transform:scale(1.2,.75)}55%{transform:scale(.92,1.1)}80%{transform:scale(1.03,.97)}}
+[data-motion="reduced"] .mtoy .blob.squish{animation:none;filter:brightness(1.15)}
+.mtoy .water{transition:transform .3s linear}
+.mtoy .train-bg{background:linear-gradient(#BFE6FF 0,#E8F7FF 55%,#A8D56E 55.1%,#8CC257 100%)}
+.mtoy .trainset{animation:tbob 2s ease-in-out infinite}
+@keyframes tbob{50%{transform:translateY(-4px)}}
+[data-motion="reduced"] .mtoy .trainset{animation:none}
+.mtoy .car{transform-origin:50% 100%}
+.mtoy .car.bounce{animation:bounce .45s ease-out}
+@keyframes bounce{35%{transform:translateY(-22px)}70%{transform:translateY(4px)}}
+[data-motion="reduced"] .mtoy .car.bounce{animation:none;filter:brightness(1.12)}
+.mtoy .puffc{opacity:0;transform-origin:50% 100%}
+.mtoy .puffc.go{animation:puffc .9s ease-out}
+@keyframes puffc{0%{opacity:.9;transform:translateY(0) scale(.6)}100%{opacity:0;transform:translateY(-120px) scale(1.4)}}
+.mtoy .station{transition:transform .3s linear}
+.mtoy.train-go .trainmove{transform:translateX(250px);transition:transform .6s ease-in-out}
+.mtoy .trainmove{transition:transform .6s}
+.mtoy .reveal-anim{transition:clip-path .6s ease-in-out,-webkit-clip-path .6s ease-in-out}

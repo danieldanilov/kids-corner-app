@@ -155,7 +155,10 @@ async function boot() {
   try {
     const loaded = await loadCatalogs(ALL_ROWS, { fetchJson: defaultFetchJson });
     app.catalogs = loaded;
-    app.home = homeCategories(loaded);
+    // A title's home category is stored the first time it's seen and never changes, so its toy never changes.
+    const stored = (await app.store.getKV('homeCats')) || {};
+    app.home = { ...homeCategories(loaded), ...stored };
+    if (Object.keys(app.home).length !== Object.keys(stored).length) await app.store.setKV('homeCats', app.home);
   } catch { /* offline: rows come up empty */ }
 
   if (navigator.storage?.persist) navigator.storage.persist().then((ok) => { app.persisted = ok; }).catch(() => {});

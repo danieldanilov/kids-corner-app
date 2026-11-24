@@ -154,12 +154,25 @@ export function createPlayUI(app) {
     on('report', (d) => { if (d.playId && !my.playerPlayId) { my.playerPlayId = d.playId; } const { playId, ...rest } = d; logPlay({ ...rest, playerPlayId: playId }, my); });
   }
 
+  // Match cut (spec 5.5): the player, already playing underneath, is revealed from a point in the toy.
+  function reveal(el, done, shape = 'circle') {
+    const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const start = shape === 'circle' ? `circle(${Math.max(20, r.width / 2)}px at ${cx}px ${cy}px)` : `inset(${r.top}px ${innerWidth - r.right}px ${innerHeight - r.bottom}px ${r.left}px round 24px)`;
+    const end = shape === 'circle' ? `circle(150% at ${cx}px ${cy}px)` : 'inset(0px 0px 0px 0px round 0px)';
+    layer.style.zIndex = '25';
+    layer.style.clipPath = layer.style.webkitClipPath = start;
+    void layer.offsetWidth;
+    layer.style.transition = 'clip-path .6s ease-in-out, -webkit-clip-path .6s ease-in-out';
+    requestAnimationFrame(() => { layer.style.clipPath = layer.style.webkitClipPath = end; });
+    setTimeout(() => { layer.style.transition = layer.style.clipPath = layer.style.webkitClipPath = layer.style.zIndex = ''; done(); }, 650);
+  }
+
   function showToy(c) {
     if (ctx !== c || c.ready || c.failed) return;
     const name = toyFor(c.cat, app.bedtime);
     toyLayer.classList.add('open');
     toyLayer.innerHTML = `<div class="toy-host"></div><button class="round-btn toy-back tapable" aria-label="back">${ICONS.back}</button>`;
-    c.toy = mountToy(toyLayer.querySelector('.toy-host'), name, { sound: app.sound, reduced: app.reduced() });
+    c.toy = mountToy(toyLayer.querySelector('.toy-host'), name, { sound: app.sound, reduced: app.reduced(), item: { ...c.item, poster: c.item.artwork || c.data.title.poster }, reveal });
     c.toyShownAt = performance.now();
     if (c.lastProgress != null) c.toy.setProgress(c.lastProgress);
     toyLayer.querySelector('.toy-back').onclick = () => { app.effect('button'); leave('back-loading'); };
@@ -173,8 +186,8 @@ export function createPlayUI(app) {
     if (c.toy) {
       const brief = performance.now() - c.toyShownAt < 1000;
       const ms = brief || app.reduced() ? 400 : (app.bedtime ? 1500 : 1200);
-      if (brief) { toyLayer.classList.add('fading'); toyLayer.style.setProperty('--fade', ms + 'ms'); await wait(ms); }
-      else await c.toy.handoff(ms);
+      if (brief || app.reduced()) { toyLayer.classList.add('fading'); toyLayer.style.setProperty('--fade', ms + 'ms'); await wait(ms); }
+      else await c.toy.handoff();
       if (ctx !== c) return;
       c.toy.destroy(); c.toy = null;
       toyLayer.classList.remove('open', 'fading');
@@ -267,7 +280,7 @@ export function createPlayUI(app) {
     // Goodbye card: 5 s in the category colour, Pom waving (spec 7).
     overlay.innerHTML = `<div class="goodbye" data-cat="${app.bedtime ? 'bedtime' : c.cat}">
       <button class="round-btn card-back tapable" aria-label="back">${ICONS.back}</button>
-      <div class="goodbye-pom">${pom(app.bedtime ? 'night' : 'wave', 'waving slow')}</div></div>`;
+      <div class="goodbye-pom">${pom(app.bedtime ? 'night' : 'day', 'wavel')}</div></div>`;
     overlay.classList.add('open');
     show(false);
     let done = false;

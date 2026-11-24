@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KC Testbed">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Player Testbed</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --text:#1d1d1f; --muted:#6b6b70; --line:#e2e0da; --pass:#1f8a4c; --fail:#c0392b; --warn:#b7791f; --run:#3d6fd6; --chip:#efeee9; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141416; --card:#1e1e21; --text:#f2f2f4; --muted:#a0a0a8; --line:#2e2e33; --chip:#2a2a2f; } }
+  :root[data-theme="dark"] { --bg:#141416; --card:#1e1e21; --text:#f2f2f4; --muted:#a0a0a8; --line:#2e2e33; --chip:#2a2a2f; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font: 17px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 16px; padding-bottom: 80px; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 4px 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 0 0 14px; }
+  h2 { font-size: 19px; margin: 0 0 8px; display:flex; align-items:center; gap:10px; }
+  .status { font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+  .status.pass { background: color-mix(in srgb, var(--pass) 16%, transparent); color: var(--pass); }
+  .status.fail { background: color-mix(in srgb, var(--fail) 16%, transparent); color: var(--fail); }
+  .status.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .status.run { background: color-mix(in srgb, var(--run) 16%, transparent); color: var(--run); }
+  .row { display:flex; flex-wrap: wrap; gap: 10px; align-items:center; margin: 8px 0; }
+  button { font: inherit; font-weight: 600; padding: 12px 18px; border-radius: 12px; border: 1px solid var(--line); background: var(--chip); color: var(--text); min-height: 48px; }
+  button.primary { background: var(--run); color: #fff; border-color: transparent; }
+  button:disabled { opacity: .45; }
+  label { display:block; font-weight: 600; margin: 8px 0 4px; }
+  input, textarea { width: 100%; font: 15px ui-monospace, Menlo, monospace; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  textarea { min-height: 70px; }
+  .sub { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 8px; }
+  .sub h3 { font-size: 16px; margin: 4px 0; display:flex; gap:8px; align-items:center; }
+  .log { font: 13px/1.4 ui-monospace, Menlo, monospace; color: var(--muted); white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; }
+  .hint { color: var(--muted); font-size: 15px; margin: 4px 0; }
+  #stage { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-bottom: 8px; }
+  .screens { display:grid; grid-template-columns: 1fr; gap: 8px; }
+  @media (min-width: 700px) { .screens { grid-template-columns: 1fr 1fr; } }
+  .screen { position: relative; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; }
+  .screen video, .screen > div { position:absolute; inset:0; width:100%; height:100%; }
+  .screen .tag { position:absolute; left:8px; top:6px; font-size:12px; color:#fff; opacity:.7; z-index:2; pointer-events:none; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  pre#summary { font: 12px/1.35 ui-monospace, Menlo, monospace; background: var(--bg); border-radius: 10px; padding: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Player Testbed</h1>
+  <p class="lead">Checks the Kids Corner player on this device, in order. Each step says pass or fail; a few ask you to look, listen or tap. Nothing here is shown to April.</p>
+
+  <div id="stage">
+    <div class="screens">
+      <div class="screen"><span class="tag">video</span><video id="video"></video></div>
+      <div class="screen"><span class="tag">YouTube</span><div id="yt"></div></div>
+    </div>
+    <audio id="audio"></audio>
+    <div class="row">
+      <button id="sound">Sound: off</button>
+      <span class="hint">Sound starts off. Turn it on for the listening checks.</span>
+    </div>
+  </div>
+
+  <section id="s-env"><h2>1. This device <span class="status">waiting</span></h2>
+    <table id="env"></table>
+  </section>
+
+  <section id="s-settings"><h2>2. Settings <span class="status">waiting</span></h2>
+    <p class="hint">Saved only on this device (IndexedDB), never in the address or anywhere else. Add this page to the Home Screen first if you want to test the installed app, then enter them there: the Home Screen copy keeps its own storage.</p>
+    <label for="cfg">Torrentio address (the manifest URL from Stremio's Torrentio TB addon)</label>
+    <textarea id="cfg" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://torrentio.strem.fun/.../manifest.json"></textarea>
+    <label for="tok">App token</label>
+    <input id="tok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="row"><button class="primary" id="save">Save</button><button id="clear">Forget them</button></div>
+  </section>
+
+  <section id="s-resolve"><h2>3. Worker resolve <span class="status">waiting</span></h2>
+    <p class="hint">Fetches Bluey S1E1's stream list from this iPad, resolves the best cached file through the Worker, then reads its first bytes from this iPad's own address.</p>
+    <div class="row"><button class="primary" data-run="resolve">Run</button></div>
+    <div class="log" data-log="resolve"></div>
+  </section>
+
+  <section id="s-direct"><h2>4. Direct MP4 <span class="status">waiting</span></h2>
+    <div class="sub"><h3>4a. Sample MP4 from this site <span class="status" data-sub="direct-sample">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="direct-sample">Run</button></div><div class="log" data-log="direct-sample"></div></div>
+    <div class="sub"><h3>4b. A real MP4 from TorBox (Bluey S2E5) <span class="status" data-sub="direct-live">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="direct-live">Run</button></div><div class="log" data-log="direct-live"></div></div>
+  </section>
+
+  <section id="s-remux"><h2>5. MKV remux <span class="status">waiting</span></h2>
+    <p class="hint">MKV files are repackaged into MP4 inside the page as they play. Turn Sound on and say whether you hear a soft tone in each sample.</p>
+    <div class="sub"><h3>5a. H.264 MKV, English AAC <span class="status" data-sub="remux-sample">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="remux-sample">Run</button></div><div class="log" data-log="remux-sample"></div></div>
+    <div class="sub"><h3>5b. Russian track in E-AC-3 <span class="status" data-sub="remux-eac3">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="remux-eac3">Run</button></div><div class="log" data-log="remux-eac3"></div></div>
+    <div class="sub"><h3>5c. HEVC 10-bit with AC-3 <span class="status" data-sub="remux-hevc">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="remux-hevc">Run</button></div><div class="log" data-log="remux-hevc"></div></div>
+    <div class="sub"><h3>5d. Russian MP3 audio (two buffers) <span class="status" data-sub="remux-mp3">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="remux-mp3">Run</button></div><div class="log" data-log="remux-mp3"></div></div>
+    <div class="sub"><h3>5e. A real MKV from TorBox (Bluey S1E1) <span class="status" data-sub="remux-live">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="remux-live">Run</button></div><div class="log" data-log="remux-live"></div></div>
+    <div class="sub"><h3>5f. Russian Bluey from TorBox (MP3 dub) <span class="status" data-sub="remux-live-ru">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="remux-live-ru">Run</button></div><div class="log" data-log="remux-live-ru"></div></div>
+  </section>
+
+  <section id="s-yt"><h2>6. YouTube <span class="status">waiting</span></h2>
+    <p class="hint">YouTube's own player. It is hidden whenever it isn't playing, so its pause and end screens never show.</p>
+    <div class="sub"><h3>6a. Start from a tap on this page <span class="status" data-sub="yt-start">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="yt-start">Start YouTube</button></div><div class="log" data-log="yt-start"></div></div>
+    <div class="sub"><h3>6b. Pause hides the player, resume brings it back <span class="status" data-sub="yt-pause">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="yt-pause">Pause</button><button data-run="yt-resume">Resume</button></div><div class="log" data-log="yt-pause"></div></div>
+    <div class="sub"><h3>6c. Seek forward 60 s, then back 30 s <span class="status" data-sub="yt-seek">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="yt-seek">Run</button></div><div class="log" data-log="yt-seek"></div></div>
+    <div class="sub"><h3>6d. Skip to another video <span class="status" data-sub="yt-skip">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="yt-skip">Run</button></div><div class="log" data-log="yt-skip"></div></div>
+    <div class="sub"><h3>6e. The end: our screen takes over before YouTube's end panel <span class="status" data-sub="yt-end">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="yt-end">Run</button></div><div class="log" data-log="yt-end"></div></div>
+    <div class="sub"><h3>6f. Ways out of the app <span class="status" data-sub="yt-exits">waiting</span></h3>
+      <p class="hint">Start a video (6a), then for each part: tap Arm, tap that part of the player within 10 seconds, come back to this app if it took you out. The page notices if you left. The YouTube logo is allowed to lead out; nothing else should.</p>
+      <table id="exits"></table>
+      <div class="log" data-log="yt-exits"></div></div>
+  </section>
+
+  <section id="s-audio"><h2>7. Audio with the screen locked <span class="status">waiting</span></h2>
+    <p class="hint">Plays a Kids Corner story. Press Start, lock the iPad with the top button, wait about 30 seconds, unlock and come back. Run it once in Safari and once from the Home Screen copy; the result records which.</p>
+    <div class="row"><button class="primary" data-run="audio-lock">Start</button><button data-run="audio-stop">Stop</button></div>
+    <div class="log" data-log="audio-lock"></div>
+  </section>
+
+  <section id="s-summary"><h2>Results</h2>
+    <p class="hint">No addresses, keys or tokens are included. Copy and paste them back to Claude.</p>
+    <div class="row"><button class="primary" id="copy">Copy results</button><button id="reset">Clear results</button></div>
+    <pre id="summary"></pre>
+  </section>
+</main>
+<script type="module" src="testbed.js"></script>
+</body>
+</html>

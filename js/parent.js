@@ -101,7 +101,6 @@ export async function renderParent(view, app) {
   for (const p of today) ends[p.endReason || 'unknown'] = (ends[p.endReason || 'unknown'] || 0) + 1;
 
   const voiceMissing = allTitles.filter(t => !app.sound.has('en', 'title.' + t.id) && !app.sound.has('ru', 'title.' + t.id));
-  const ruMissing = allTitles.filter(t => !app.sound.has('ru', 'title.' + t.id)).length;
   const failedIds = [...hid.failedTitles];
 
   view.className = 'screen parent';
@@ -118,7 +117,7 @@ export async function renderParent(view, app) {
 
     <section><h2>Bedtime</h2>
       <div class="field"><span>Bedtime now</span>${sw('bedtime.manual', s.bedtime.manual)}</div>
-      <div class="field"><span>Every day from</span><input type="time" data-input="bedtime.start" value="${esc(s.bedtime.start)}"> <span>to</span> <input type="time" data-input="bedtime.end" value="${esc(s.bedtime.end)}"></div>
+      <div class="field"><span>Every day from</span><input type="time" data-input="bedtime.start" value="${esc(s.bedtime.start)}"> <span>to</span> <input type="time" data-input="bedtime.end" value="${esc(s.bedtime.end)}">${s.bedtime.start || s.bedtime.end ? '<button class="btn small" data-a="clear-window">No window</button>' : ''}</div>
       <div class="field"><span>One story, then good night</span>${sw('bedtime.oneStory', s.bedtime.oneStory)}</div>
       ${u.goodnight ? '<div class="field"><span>She is on the good night screen</span><button class="btn" data-a="wake">Wake the app</button></div>' : ''}
       <p class="hint">Bedtime switches only between videos, never in the middle of one.</p>
@@ -172,7 +171,7 @@ export async function renderParent(view, app) {
     </section>
 
     <section><h2>Missing voice clips</h2>
-      <p class="hint">${voiceMissing.length} titles have no spoken name in either language; ${ruMissing} have no Russian name yet.</p>
+      <p class="hint">${voiceMissing.length} titles have no spoken name. A title is spoken once, as written in the catalog.</p>
       ${voiceMissing.length ? `<details><summary>Show them</summary><ul class="plain">${voiceMissing.slice(0, 300).map(t => `<li>${esc(t.name)}</li>`).join('')}</ul></details>` : ''}
     </section>
 
@@ -245,6 +244,7 @@ export async function renderParent(view, app) {
       case 'lock': app.parentOpen = false; app.go('#/'); return;
       case 'sample-name': app.sound.unlock(); app.speak('ui.hi'); return;
       case 'sample-effect': app.sound.unlock(); app.effect('chip'); return;
+      case 'clear-window': { const n = structuredClone(app.settings); n.bedtime.start = ''; n.bedtime.end = ''; await app.saveSettings(n); return rerender(); }
       case 'wake': app.usage = { ...app.today(), goodnight: false }; await app.saveUsage(); app._saidGoodnight = false; return rerender();
       case 'more-show': app.usage = { ...app.today(), extraShows: (app.today().extraShows || 0) + 1 }; await app.saveUsage(); return rerender();
       case 'more-time': app.usage = { ...app.today(), extraMinutes: (app.today().extraMinutes || 0) + 15 }; await app.saveUsage(); return rerender();

@@ -542,7 +542,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
             seekT = setTimeout(() => { seekRetried = true; yt.seek(lastSeek); }, 8000);
           }
         } else if (st === YT_STATE.PAUSED) {
-          clearT();
+          yt.show(false); clearT();
           if (started && !paused) { paused = true; emit('paused', {}); }
         } else if (st === YT_STATE.ENDED) {
           endNow();

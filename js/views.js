@@ -162,8 +162,11 @@ function wireShelf(view, app) {
   const [prev, next] = view.querySelectorAll('.page-btn');
   const pad = parseFloat(getComputedStyle(shelf).paddingLeft) || 0;
   const tiles = () => [...shelf.querySelectorAll('.poster, .ep')];
+  const padRight = () => parseFloat(getComputedStyle(shelf).paddingRight) || 0;
+  // The end is reached when every tile ends inside the visible page (the spacer after them is just room).
+  const pastRight = () => tiles().filter(t => t.offsetLeft + t.offsetWidth > shelf.scrollLeft + shelf.clientWidth - padRight() + 1);
   const update = () => {
-    const atStart = shelf.scrollLeft <= 2, atEnd = shelf.scrollLeft + shelf.clientWidth >= shelf.scrollWidth - 2;
+    const atStart = shelf.scrollLeft <= 2, atEnd = pastRight().length === 0;
     prev.classList.toggle('inert', atStart); next.classList.toggle('inert', atEnd);
     prev.disabled = atStart; next.disabled = atEnd;
     // A poster cut by the shelf edge is a sliver: dimmed and not tappable until paged into view.
@@ -189,7 +192,11 @@ function wireShelf(view, app) {
     const left = shelf.scrollLeft, width = shelf.clientWidth;
     const lefts = [...new Set(tiles().map(t => t.offsetLeft))].sort((a, b) => a - b);
     let target;
-    if (dir > 0) target = lefts.find(x => x + 1 > left + pad && tiles().some(t => t.offsetLeft === x && t.offsetLeft + t.offsetWidth > left + width + 1)) ?? left + width - pad;
+    if (dir > 0) {
+      const cut = pastRight();
+      if (!cut.length) return;
+      target = Math.min(...cut.map(t => t.offsetLeft));
+    }
     else target = lefts.find(x => x - pad >= left - width + 2 * pad - 1) ?? 0;
     shelf.scrollTo({ left: Math.max(0, target - pad), behavior: app.reduced() ? 'auto' : 'smooth' });
   };

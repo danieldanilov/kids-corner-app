@@ -525,7 +525,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       const t = yt.time(), d = yt.duration();
       if (started) rep.watchedSec = Math.max(rep.watchedSec, Math.round(t - startAt));
       if (started && Math.abs(t - lastEmit) >= 1) { lastEmit = t; emit('time', { position: t, duration: d || null }); }
-      
+      if (started && !endedByUs && d > 0 && t >= d - o.ytEndGuardSec && yt.state() === YT_STATE.PLAYING) endNow();
     }, 250);
     yt.setHandler({
       onState(st) {
@@ -542,7 +542,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
             seekT = setTimeout(() => { seekRetried = true; yt.seek(lastSeek); }, 8000);
           }
         } else if (st === YT_STATE.PAUSED) {
-          yt.show(false); clearT();
+          clearT();
           if (started && !paused) { paused = true; emit('paused', {}); }
         } else if (st === YT_STATE.ENDED) {
           endNow();

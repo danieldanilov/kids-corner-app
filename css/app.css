@@ -73,7 +73,7 @@ svg { display: block; }
 
 /* ---------- lock ---------- */
 .lock { position: absolute; top: 26px; right: 28px; width: 56px; height: 56px; display: grid; place-items: center; color: var(--ink-2); opacity: .55; z-index: 5; }
-.lock .icon { width: 30px; height: 30px; }
+.lock .icon { width: 44px; height: 44px; }   /* spec 6.1: a 44 px drawing in the 56 px hit area */
 .lock-ring { position: absolute; inset: 2px; border-radius: 50%; background: conic-gradient(var(--ink-2) var(--fill, 0%), transparent 0); -webkit-mask: radial-gradient(circle, transparent 22px, #000 23px); mask: radial-gradient(circle, transparent 22px, #000 23px); transition: --fill 300ms; }
 .lock.holding .lock-ring { animation: ring-fill 3s linear forwards; }
 @property --fill { syntax: '<percentage>'; inherits: false; initial-value: 0%; }

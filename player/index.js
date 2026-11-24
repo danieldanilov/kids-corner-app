@@ -311,6 +311,18 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       for (let i = 0; i < b.length; i++) if (b.start(i) <= t + 0.5 && b.end(i) >= t) return b.end(i);
       return null;
     };
+    // Frozen-playhead watchdog: WebKit occasionally reports playing with data ahead while the clock stands
+    // still (seen after a resume point). One still second with data ahead: nudge it.
+    let lastT = -1, still = 0;
+    const freeze = setInterval(() => {
+      if (!media || video.paused || video.ended || video.readyState < 3) { still = 0; lastT = video.currentTime; return; }
+      const t = video.currentTime, end = bufferedEnd();
+      if (Math.abs(t - lastT) < 0.02 && end != null && end - t > 1) {
+        if (++still >= 2) { still = 0; rep.nudges = (rep.nudges || 0) + 1; try { video.currentTime = t + 0.01; } catch { /* ignore */ } video.play().catch(() => {}); }
+      } else still = 0;
+      lastT = t;
+    }, 500);
+    cleanup(() => clearInterval(freeze));
     const listeners = { timeupdate: onTime, waiting: onWaiting, playing: onPlaying, pause: onPause, ended: onEnded, progress: onProgress };
     for (const [k, f] of Object.entries(listeners)) video.addEventListener(k, f);
     const teardownAll = () => {
@@ -374,6 +386,8 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         return { kind: 'remux', failed: Promise.resolve(false), teardown() {} };
       }
       if (o.debug) globalThis.__kcSink = sink;
+      // Seek before any data: the first fragment then satisfies a pending seek, rather than being seeked into.
+      if (at > 0) { try { video.currentTime = at; } catch { /* set again after the first append */ } }
       const pushDemand = () => {
         if (!runId) return;
         const t = video.currentTime;

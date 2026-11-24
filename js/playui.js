@@ -101,6 +101,7 @@ export function createPlayUI(app) {
 
   function teardown() {
     layer.classList.remove('needs-tap');
+    document.getElementById('kc-yt').style.visibility = '';
     if (!ctx) return;
     clearTimeout(ctx.toyTimer); clearTimeout(ctx.stallTimer); clearTimeout(ctx.nightTimer);
     try { ctx.session.stop(); } catch { /* already stopped */ }
@@ -150,11 +151,16 @@ export function createPlayUI(app) {
     on('time', (d) => onTime(my, d));
     on('paused', () => onPaused(my));
     on('stalled', () => { clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => stallEl.classList.add('open'), 1000); });
-    on('resumed', () => { clearTimeout(my.stallTimer); stallEl.classList.remove('open'); if (my.paused) { my.paused = false; pauseEl.classList.remove('open'); setRail(); } });
+    on('resumed', () => { clearTimeout(my.stallTimer); stallEl.classList.remove('open'); if (my.paused) { my.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); } });
     on('ended', () => onEnded(my));
-    on('needs-tap', () => {
+    on('needs-tap', async () => {
       clearTimeout(my.toyTimer);
-      if (my.toy) { my.toy.destroy(); my.toy = null; }
+      if (my.toy) {   // spec 4.8: the toy fades out over 300 ms, no match cut (the video isn't playing yet)
+        toyLayer.style.setProperty('--fade', '300ms'); toyLayer.classList.add('fading');
+        await wait(300);
+        if (ctx !== my) return;
+        my.toy?.destroy(); my.toy = null;
+      }
       toyLayer.classList.remove('open', 'fading');
       pauseEl.classList.remove('open'); stallEl.classList.remove('open');
       layer.classList.add('needs-tap');
@@ -225,6 +231,7 @@ export function createPlayUI(app) {
     c.paused = true;
     setRail();
     if (c.item.kind === 'audio') return;            // a story shows its cover; the rail's play button resumes
+    if (c.item.kind === 'youtube') document.getElementById('kc-yt').style.visibility = 'hidden';
     const v = c.videos;
     const still = c.videos[c.index].thumbnail || c.data.title.background || c.data.title.poster || '';
     const tile = (i, dir) => i < 0 || i >= v.length ? '<span class="pause-gap" aria-hidden="true"></span>' :
@@ -236,7 +243,7 @@ export function createPlayUI(app) {
   }
 
   function doPause() { if (!ctx) return; ctx.session.pause(); if (!ctx.paused) onPaused(ctx); saveProgress(); app.saveUsage(); }
-  function doResume() { if (!ctx) return; ctx.paused = false; pauseEl.classList.remove('open'); setRail(); ctx.session.resume(); }
+  function doResume() { if (!ctx) return; ctx.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); ctx.session.resume(); }
 
   pauseEl.addEventListener('click', (e) => {
     if (e.target.closest('.pause-play')) { app.effect('button'); doResume(); return; }

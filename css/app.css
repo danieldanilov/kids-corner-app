@@ -191,7 +191,8 @@ svg { display: block; }
 .rail-btn:nth-child(1) { top: 24px; } .rail-btn:nth-child(2) { top: 168px; } .rail-btn:nth-child(3) { top: 304px; }
 .rail-btn:nth-child(4) { top: 440px; } .rail-btn:nth-child(5) { top: 576px; }
 .rail-btn.inert { opacity: .3; pointer-events: none; }
-#player.needs-tap .rail-btn:not([data-r="back"]), #player.needs-tap .rail-dots { visibility: hidden; }
+/* Spec 4.8: YouTube's own start screen or an ad: back stays active, the rest fade to 30% and do nothing. */
+#player.needs-tap .rail-btn:not([data-r="back"]) { opacity: .3; pointer-events: none; }
 .rail-dots { position: absolute; left: 28px; top: 712px; display: flex; gap: 6px; }
 #video-area { position: absolute; left: 192px; top: 140px; width: 986px; height: 555px; border-radius: 12px; overflow: hidden; background: #000; }
 #kc-video, #kc-yt, #kc-yt iframe, #kc-cover { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }

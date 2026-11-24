@@ -80,6 +80,8 @@ app.go = (hash) => {
 
 let renderToken = 0;
 async function render() {
+  // A deferred update applies when she's back on home (the show page after an episode keeps its "again").
+  if (app.updateReady && (location.hash || '#/') === '#/' && app.safeToReload()) { app.maybeReload(); return; }
   const token = ++renderToken;
   const view = $('#view');
   const h = location.hash || '#/';
@@ -100,6 +102,28 @@ async function render() {
   if (needsHowMany(u, app.settings) && !app.howManyAsked) { app.howManyAsked = true; renderHowMany(app); }
 }
 app.render = render;
+
+// ---------- updates: a new build lands on the next open ----------
+// The new service worker skips waiting and claims this page; when it takes over, the page reloads once, but only
+// when nothing is playing and no card, toy, gate or parent screen is open. Otherwise at the next safe moment
+// (back on home after the video, for example). Opening the app, or bringing it back from the background, checks.
+app.updateReady = false;
+app.safeToReload = () => !app.playing && !app.playui?.active && !app.parentOpen
+  && !document.getElementById('overlay')?.classList.contains('open') && !document.getElementById('toy-layer')?.classList.contains('open');
+app.maybeReload = () => { if (app.updateReady && app.safeToReload()) { app.updateReady = false; location.reload(); } };
+
+function setupUpdates() {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;            // the first install: this page is already the newest build
+    app.updateReady = true;
+    app.maybeReload();
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
 
 // ---------- boot ----------
 async function boot() {
@@ -177,7 +201,7 @@ async function boot() {
   } catch { /* offline: rows come up empty */ }
 
   if (navigator.storage?.persist) navigator.storage.persist().then((ok) => { app.persisted = ok; }).catch(() => {});
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) setupUpdates();
   document.documentElement.classList.add('ready');
   render();
 }

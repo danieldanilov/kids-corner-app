@@ -23,17 +23,32 @@ export function normalizeName(s) {
     .replace(/[^a-z0-9а-яё]+/g, ' ').trim().replace(/\s+/g, ' ');
 }
 
-// Whole-word phrase match of any of the names in the text, comparing transliterated forms.
-export function nameMatches(text, names) {
-  const hay = ' ' + transliterate(normalizeName(text)) + ' ';
-  if (hay.trim() === '') return false;
+// Roman II to IX read as numbers, so "Frozen II" and "Frozen.2" match. Single letters I, V and X are left
+// alone: Russian «и» and «в» transliterate to "i" and "v" ("Masha i Medved").
+const ROMAN = { ii: '2', iii: '3', iv: '4', vi: '6', vii: '7', viii: '8', ix: '9' }; // not v or x: «в» is "v" too
+const canon = s => transliterate(normalizeName(s)).split(' ').map(w => ROMAN[w] || w).join(' ');
+
+// Whole-word phrase match of any of the names in the text. Returns the words after the match, or null.
+export function nameMatchTail(text, names) {
+  const hay = ' ' + canon(text) + ' ';
+  if (hay.trim() === '') return null;
   for (const raw of names || []) {
-    let n = transliterate(normalizeName(raw));
+    const n = canon(raw);
     if (!n) continue;
-    if (hay.includes(' ' + n + ' ')) return true;
-    if (n.startsWith('the ') && n.length > 6 && hay.includes(' ' + n.slice(4) + ' ')) return true;
+    for (const form of n.startsWith('the ') && n.length > 6 ? [n, n.slice(4)] : [n]) {
+      const i = hay.indexOf(' ' + form + ' ');
+      if (i >= 0) return { name: form, tail: hay.slice(i + form.length + 2).trim().split(' ').filter(Boolean) };
+    }
   }
-  return false;
+  return null;
+}
+export function nameMatches(text, names) { return nameMatchTail(text, names) != null; }
+
+// A sequel marker right after the matched name: 2 to 9 (roman already folded), or Part/Chapter/Часть N.
+function sequelAfter(tail) {
+  const [a, b] = tail;
+  if (/^[2-9]$/.test(a || '')) return true;
+  return /^(part|pt|chapter|chast|chast'|chastʹ)$/.test(a || '') && /^\d{1,2}$/.test(b || '');
 }
 
 export function parseEpisode(fn) {
@@ -79,6 +94,7 @@ export function fileTitle(fileBase) {
   let t = String(fileBase || '').replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ').replace(/-[A-Za-z0-9]+$/, '');
   t = normalizeName(t.replace(/[._]/g, ' '));
   t = t.replace(/\bs\d{1,2}\s*e\d{1,3}(\s*e\d{1,3})*\b/g, ' ').replace(/\b\d{1,2}x\d{2,3}\b/g, ' ')
+    .replace(/\b(season|сезон)\s*\d{1,2}\b/g, ' ').replace(/\bs\d{1,2}\b/g, ' ')
     .replace(/\b(episode|ep|e|серия|серии|эпизод|часть|part)\s*\d{1,3}\b/g, ' ').replace(/\b\d{1,3}\s*(серия|й)\b/g, ' ')
     .replace(NOISE, ' ').replace(/\b(19|20)\d{2}\b/g, ' ').replace(/\b\d+\b/g, ' ');
   return t.replace(/\s+/g, ' ').trim();
@@ -166,11 +182,16 @@ export function hardSkip(c, item = {}, caps = {}) {
   if (item.type === 'series' && c.ep && !(+item.episode >= c.ep.episode && +item.episode <= (c.ep.episodeEnd || c.ep.episode))) return 'wrong_episode';
   // Show name: from the file's own name. A pack that names the show vouches only for a bare file, or one
   // whose leftover title is Cinemeta's name for this episode (Boss ruling: never a pack's name alone).
-  const ownName = nameMatches(c.fileBase, names);
+  const own = nameMatchTail(c.fileBase, names);
+  const ownName = own != null;
   if (!ownName) {
     if (item.type !== 'series') return 'wrong_show';
-    if (!nameMatches(c.torrent, names) && !nameMatches(c.folder, names)) return 'wrong_show';
+    // The nearest folder with any title text speaks for the file; the pack may vouch only when none does.
+    const speaking = c.folder.split('/').reverse().find(f => fileTitle(f));
+    if (speaking != null ? !nameMatches(speaking, names) : !nameMatches(c.torrent, names)) return 'wrong_show';
     if (c.title && !titleMatches(c.title, item.episodeName)) return 'wrong_show';
+  } else if (item.type !== 'series' && sequelAfter(own.tail)) {
+    return 'wrong_show'; // "Moana 2" for Moana: a sequel the catalog name doesn't have
   }
   const hasRuntime = +item.runtimeMin > 0;
   if (!hasRuntime && !ownName) return 'no_runtime_unverified';

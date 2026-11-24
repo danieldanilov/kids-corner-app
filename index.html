@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Kids Corner</title>
+<meta name="description" content="April's shows, films, stories and YouTube channels.">
+<meta name="theme-color" content="#FFF7EA">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Kids Corner">
+<meta name="format-detection" content="telephone=no">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main id="view" class="screen"></main>
+
+<!-- One persistent player for the whole session (P §2): never removed from the DOM. -->
+<section id="player" aria-label="player">
+  <nav id="rail"></nav>
+  <div id="video-area">
+    <video id="kc-video" playsinline webkit-playsinline disableremoteplayback disablepictureinpicture x-webkit-airplay="deny" preload="none"></video>
+    <div id="kc-yt"></div>
+    <div id="kc-cover"></div>
+    <div id="stall"></div>
+    <div id="pause-screen"></div>
+  </div>
+  <audio id="kc-audio" preload="none"></audio>
+</section>
+<section id="toy-layer"></section>
+<section id="overlay"></section>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

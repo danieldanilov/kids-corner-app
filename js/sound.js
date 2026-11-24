@@ -98,7 +98,12 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
         t += b.duration + 0.25;
       }
       current = started;
-      await new Promise(r => setTimeout(r, Math.max(0, (t - ctx.currentTime) * 1000)));
+      if (!started.length) return;
+      // Resolve on the last clip's own 'ended' event (or when a new tap stops it), with a timer as a backstop.
+      await new Promise((r) => {
+        started[started.length - 1].onended = r;
+        setTimeout(r, Math.max(0, (t - ctx.currentTime) * 1000) + 1500);
+      });
     },
     effect(name) {
       if (!ctx || settings.all === false || settings.effects === 'off' || bedtime) return;

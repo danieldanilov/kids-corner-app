@@ -213,7 +213,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   }
 
   // ---- session ----
-  function play(item, { startAt = 0, keepAwake = true } = {}) {
+  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false } = {}) {
     if (current) current._stop('replaced');
     if (!unlocked) unlock();
     const s = new EventTarget();
@@ -264,7 +264,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     current = s;
 
     const kind = item?.kind;
-    if (kind === 'youtube') playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f) });
+    if (kind === 'youtube') playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly });
     else if (kind === 'audio') playAudio(item, startAt, keepAwake, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f) });
     else if (kind === 'torbox' || kind === 'file') playTorbox(item, startAt, s, { emit, rep, markReady, finish, mark, cleanup: f => cleanup.push(f), isStopped: () => stopped });
     else queueMicrotask(() => { rep.failures.push('bad_item'); finish('failed-all', ['bad_item']); });
@@ -514,7 +514,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
 
   // ---- YouTube ----
   function playYouTube(item, startAt, s, ctx) {
-    const { emit, rep, markReady, finish, cleanup } = ctx;
+    const { emit, rep, markReady, finish, cleanup, cueOnly } = ctx;
     rep.path = 'youtube';
     if (!yt) { rep.failures.push('no_yt_container'); queueMicrotask(() => finish('failed-all', ['no_yt_container'])); return; }
     let started = false, paused = false, endedByUs = false, stopping = false, lastSeek = null, seekRetried = false;
@@ -564,7 +564,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       },
     });
     emit('progress', { fraction: null, stage: 'buffer' });
-    const sync = yt.load(item.ytId || item.videoId, startAt || 0);
+    const sync = cueOnly ? yt.cue(item.ytId || item.videoId) : yt.load(item.ytId || item.videoId, startAt || 0);
     if (!sync) rep.ytLoadedLate = true;
     // If the video hasn't reached PLAYING after a moment, show the player: either iOS refused the programmatic
     // start (she taps YouTube's play button) or YouTube is showing a pre-roll ad, which the API reports as

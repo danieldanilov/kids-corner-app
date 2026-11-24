@@ -109,10 +109,12 @@ export function applyBedtime(current, wanted, { playing }) {
 // Failures: titleId -> { videos: { videoId: at }, type }. Setup problems are not the title's fault.
 export const FAIL_TTL_MS = 7 * 86400000;
 export const SERIES_FAILS_TO_HIDE = 3;
-const SETUP_REASONS = new Set(['not-configured', 'unauthorized', 'misconfigured', 'forbidden', 'no-player', 'app_token']);
+// Setup problems (no config, a rejected token or origin), an app bug, or a network blip: never the title's fault.
+export const SETUP_RE = /^(not-configured|unauthorized|misconfigured|forbidden|no-player|app_token|no_secrets|origin|bad_item)$|network|fetch|load failed|timed? ?out|offline|abort/i;
+export const isSetupReason = (r) => SETUP_RE.test(String(r));
 
 export function recordFailure(failed, item, reasons = [], now = Date.now()) {
-  if (reasons.some(r => SETUP_REASONS.has(r))) return failed;
+  if (reasons.some(isSetupReason)) return failed;
   const cur = failed[item.titleId] || { type: item.type, videos: {} };
   return { ...failed, [item.titleId]: { ...cur, videos: { ...cur.videos, [item.videoId]: now } } };
 }

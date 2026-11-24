@@ -63,6 +63,13 @@ export function createYouTubeHost(container, { muted = false } = {}) {
       readyP.then(go);
       return false;
     },
+    // Diagnostic: show YouTube's own start screen (testbed ways-out check). Never used for her.
+    cue(videoId) {
+      const go = () => player.cueVideoById({ videoId });
+      if (ready) { go(); return true; }
+      readyP.then(go);
+      return false;
+    },
     play() { player?.playVideo(); },
     mute() { muted = true; try { player?.mute(); } catch { /* ignore */ } },
     unMute() { muted = false; try { player?.unMute(); } catch { /* ignore */ } },

@@ -177,8 +177,6 @@ export function hardSkip(c, item = {}, caps = {}) {
   if (item.type === 'series') {
     const e = c.ep;
     if (!e) return 'episode_unverified';
-    const want = +item.episode;
-    if (!(want >= e.episode && want <= (e.episodeEnd || e.episode))) return 'wrong_episode';
     if (c.season != null) { if (item.season != null && c.season !== +item.season) return 'wrong_episode'; }
     else if (!(+item.seasonCount === 1)) return 'episode_unverified';
     // A file whose years all predate the show is a different show with the same name (Bluey 1976 vs 2018).

@@ -1,7 +1,7 @@
 // The player flow (spec 4.5-4.7, 5, 7): loading moment with the category toy, the rail, pause screen,
 // stall state, goodbye card, sleeping card, limits at episode ends, progress, watch time and the play log.
 import { playItemFor, kindOf } from './data.js';
-import { isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
+import { isSetupReason, isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
 import { sanitizeReport, secretValues } from './secrets.js';
 import { mountToy, toyFor } from './toys.js';
 import { pom, ICONS, CHIP_ART } from './art.js';
@@ -310,8 +310,8 @@ export function createPlayUI(app) {
   async function fail(reasons, c) {
     if (c.failed) return;
     c.failed = true;
-    const setup = reasons.some(r => SETUP.has(r));
-    if (setup) app.setupHint = reasons.find(r => SETUP.has(r));
+    const setup = reasons.some(isSetupReason);
+    if (setup) app.setupHint = reasons.find(isSetupReason);
     else {
       app.failed = recordFailure(app.failed, { titleId: c.data.title.id, videoId: c.item.videoId, type: c.data.title.type }, reasons);
       await app.store.saveFailed(app.failed);

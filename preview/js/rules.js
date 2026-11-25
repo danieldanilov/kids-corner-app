@@ -17,7 +17,7 @@ export function keepWatching(progress, { hidden = new Set(), max = KEEP_MAX } = 
     if (!cur || p.updatedAt > cur.updatedAt) latest.set(p.titleId, p);
   }
   return [...latest.values()]
-    .filter(p => !hidden.has(p.titleId) && !isFinished(p) && p.position >= MIN_START_S)
+    .filter(p => p.titleType !== 'Music' && !hidden.has(p.titleId) && !isFinished(p) && p.position >= MIN_START_S)   // songs are replayed whole
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, max);
 }

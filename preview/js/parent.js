@@ -3,7 +3,7 @@ import { HOLD_MS, validPinFormat, makePinRecord, checkPin, registerAttempt, atte
 import { normaliseTorrentioConfig } from './secrets.js';
 import { checkConnection } from './connection.js';
 import { setSecretList } from './main.js';
-import { CATEGORIES } from './data.js';
+import { CATEGORIES, titleClipId } from './data.js';
 import { todayKey } from './rules.js';
 import { ICONS } from './art.js';
 
@@ -120,7 +120,7 @@ export async function renderParent(view, app) {
   const ends = {};
   for (const p of today) ends[p.endReason || 'unknown'] = (ends[p.endReason || 'unknown'] || 0) + 1;
 
-  const voiceMissing = allTitles.filter(t => !app.sound.hasTitle(t.id));
+  const voiceMissing = allTitles.filter(t => !app.sound.hasTitle(titleClipId(t.id)));
   const failedIds = [...hid.failedTitles];
 
   view.className = 'screen parent';

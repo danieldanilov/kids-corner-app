@@ -56,7 +56,7 @@ function typoMatch(w, t) {
 }
 
 // Titles first, then episodes (of shows and stories), then channel videos.
-const KIND_RANK = { title: 0, episode: 1, video: 2 };
+const KIND_RANK = { title: 0, song: 0, episode: 1, video: 2 };
 
 // The index: each entry keeps its written forms; a vocabulary maps every word (of the entry's own name and, for an
 // episode or video, its show's name) to the entries that hold it, so word matching, typos included, runs once per
@@ -126,7 +126,9 @@ export function docsFromCatalogs(catalogs) {
   for (const list of Object.values(catalogs || {})) for (const m of list || []) {
     if (!m?.id || seen.has(m.id) || !m.name) continue;
     seen.add(m.id);
-    docs.push({ id: m.id, kind: 'title', type: m.type, name: m.name, poster: m.poster, posterShape: m.posterShape });
+    // A song matches on its title and its artist (spec 4.10); the tile shows the title.
+    if (m.type === 'Music') docs.push({ id: m.id, kind: 'song', type: 'Music', name: [m.name, m.description].filter(Boolean).join(' · '), title: m.name, poster: m.poster });
+    else docs.push({ id: m.id, kind: 'title', type: m.type, name: m.name, poster: m.poster, posterShape: m.posterShape });
   }
   return docs;
 }
@@ -168,6 +170,7 @@ export const SEARCH_GROUPS = [
   { type: 'series', label: 'Shows', cat: 'shows' },
   { type: 'movie', label: 'Movies', cat: 'movies' },
   { type: 'YouTube', label: 'YouTube', cat: 'youtube' },
+  { type: 'Music', label: 'Music', cat: 'music' },
   { type: 'Audio', label: 'Stories', cat: 'stories' },
 ];
 export function groupResults(hits, { hidden, metaOf, perGroup = 30 }) {
@@ -177,11 +180,12 @@ export function groupResults(hits, { hidden, metaOf, perGroup = 30 }) {
   for (const hit of hits) {
     const g = byType[hit.type];
     if (!g || g.items.length >= perGroup) continue;
-    const titleId = hit.kind === 'title' ? hit.id : hit.parent;
+    const own = hit.kind === 'title' || hit.kind === 'song';
+    const titleId = own ? hit.id : hit.parent;
     if (!titleId || hidden.titles.has(titleId) || hidden.videos.has(hit.id)) continue;
-    const meta = metaOf(titleId) || (hit.kind === 'title' ? hit : null);
+    const meta = metaOf(titleId) || (own ? hit : null);
     if (!meta) continue;
-    if (hit.kind !== 'title') { const key = titleId + '\u0000' + normalize(hit.name); if (seen.has(key)) continue; seen.add(key); }
+    if (!own) { const key = titleId + '\u0000' + normalize(hit.name); if (seen.has(key)) continue; seen.add(key); }
     g.items.push({ hit, meta });
   }
   return groups.filter(g => g.items.length);

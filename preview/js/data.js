@@ -9,6 +9,15 @@ export const CATEGORIES = [
   { id: 'movies', label: 'Movies', rows: [{ type: 'movie', id: 'movies' }, { type: 'movie', id: 'streaming' }] },
   { id: 'bedtime', label: 'Bedtime', rows: [{ type: 'series', id: 'bedtime' }, { type: 'Audio', id: 'bedtime' }, { type: 'YouTube', id: 'bedtime' }] },
   { id: 'youtube', label: 'YouTube', rows: [{ type: 'YouTube', id: 'shows' }, { type: 'YouTube', id: 'songs' }, { type: 'YouTube', id: 'learning' }, { type: 'YouTube', id: 'read-aloud' }, { type: 'YouTube', id: 'hebrew' }] },
+  // Music (spec 4.11): only Kids Corner's six music catalogs, in this order; each row's English name for its divider.
+  { id: 'music', label: 'Music', music: true, rows: [
+    { type: 'Music', id: 'music.favourites', label: 'Favourites' },
+    { type: 'Music', id: 'music.kpop-demon-hunters', label: 'KPop Demon Hunters' },
+    { type: 'Music', id: 'music.disney', label: 'Disney' },
+    { type: 'Music', id: 'music.super-simple', label: 'Super Simple Songs & Scratch Garden' },
+    { type: 'Music', id: 'music.russian', label: 'По-русски' },
+    { type: 'Music', id: 'music.holidays', label: 'Christmas & New Year' },
+  ] },
   { id: 'stories', label: 'Stories', rows: [{ type: 'Audio', id: 'stories' }, { type: 'movie', id: 'stories' }] },
   { id: 'russian', label: 'По-русски', lang: 'ru', rows: [{ type: 'series', id: 'ru-series' }, { type: 'movie', id: 'ru-movies' }, { type: 'YouTube', id: 'russian' }] },
   { id: 'british', label: 'British', rows: [{ type: 'series', id: 'british' }, { type: 'movie', id: 'british' }] },
@@ -68,6 +77,34 @@ export async function defaultFetchJson(url, { timeoutMs = 12000, cache } = {}) {
 }
 
 export const rowKey = (r) => `${r.type}/${r.id}`;
+
+// The Music page (spec 4.11): the music catalogs' rows in order, each song once (the first row it appears in),
+// hidden or failed songs left out, empty rows dropped. `videos` is the page order, which next and the pause tiles
+// follow. A song's YouTube id is the end of its id (kc.music.<videoId>).
+export const MUSIC_PREFIX = 'kc.music.';
+export function musicData(catalogs, { hidden = new Set() } = {}) {
+  const cat = CATEGORIES.find(c => c.id === 'music');
+  const seen = new Set(), rows = [];
+  for (const r of cat.rows) {
+    const songs = [];
+    for (const m of catalogs[rowKey(r)] || []) {
+      if (!m?.id?.startsWith(MUSIC_PREFIX) || seen.has(m.id) || hidden.has(m.id)) continue;
+      seen.add(m.id);
+      songs.push({ id: m.id, title: m.name || '', artist: m.description || '', thumbnail: m.poster || '', ytId: m.id.slice(MUSIC_PREFIX.length) });
+    }
+    if (songs.length) rows.push({ key: rowKey(r), label: r.label, songs });
+  }
+  const videos = rows.flatMap(r => r.songs);
+  return { title: { id: 'music', type: 'Music', name: 'Music', poster: videos[0]?.thumbnail || '' }, videos, rows };
+}
+
+// The spoken-title clip for a title or a song (spec 2.6): songs are title/music.<videoId>.
+export const titleClipId = (id) => (String(id).startsWith(MUSIC_PREFIX) ? 'music.' + String(id).slice(MUSIC_PREFIX.length) : id);
+
+// Every title in catalog order, for the New row: songs are not titles and never count as new.
+export function titleOrder(catalogs) {
+  return [...new Set(ALL_ROWS.filter(r => r.type !== 'Music').flatMap(r => (catalogs[rowKey(r)] || []).map(m => m.id)))];
+}
 
 // Rows for a category: hidden and failed titles out, a title only once per category, empty rows dropped.
 export function buildRows(cat, catalogs, { hidden = new Set(), failed = new Set() } = {}) {
@@ -129,7 +166,7 @@ export function parseYear(y) {
 }
 
 export function kindOf(type) {
-  if (type === 'YouTube') return 'youtube';
+  if (type === 'YouTube' || type === 'Music') return 'youtube';   // songs play in the YouTube player
   if (type === 'Audio') return 'audio';
   return 'torbox';
 }
@@ -145,7 +182,7 @@ export function playItemFor(title, video, { lang = 'en', stream = null, altNames
       videoId: isSeries ? video.id : title.id, runtimeMin: parseRuntime(title.runtime), episodeTitle: video?.title || '',
       seasonCount: isSeries && title.seasonCount > 0 ? title.seasonCount : undefined, episodeName: isSeries ? (video?.title || undefined) : undefined };
   }
-  if (kind === 'youtube') return { ...base, videoId: video.id, ytId: stream?.ytId, episodeTitle: video.title || stream?.title || '' };
+  if (kind === 'youtube') return { ...base, videoId: video.id, ytId: stream?.ytId || video.ytId, episodeTitle: video.title || stream?.title || '' };
   return { ...base, videoId: video.id, url: stream?.url, episodeTitle: video.title || stream?.title || '', artwork: video.thumbnail || title.poster };
 }
 

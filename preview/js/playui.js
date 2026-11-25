@@ -1,6 +1,6 @@
 // The player flow (spec 4.5-4.7, 5, 7): loading moment with the category toy, the rail, pause screen,
 // stall state, goodbye card, sleeping card, limits at episode ends, progress, watch time and the play log.
-import { playItemFor, kindOf } from './data.js';
+import { playItemFor, kindOf, musicData, titleClipId } from './data.js';
 import { youtubeHostFor, isSetupReason, isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
 import { sanitizeReport, secretValues } from './secrets.js';
 import { mountToy, toyFor } from './toys.js';
@@ -8,6 +8,8 @@ import { pom, ICONS, CHIP_ART } from './art.js';
 import { createAutoHide } from './controls.js';
 
 const $ = (s) => document.querySelector(s);
+// The spoken title for what's playing: a song's own title (title.music.<videoId>), otherwise the show's.
+const titleClip = (c) => 'title.' + titleClipId(c.data.title.type === 'Music' ? c.item.videoId : c.data.title.id);
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 const SAVE_EVERY_MS = 5000;
 const SETUP = new Set(['not-configured', 'unauthorized', 'misconfigured', 'forbidden', 'no-player', 'app_token']);
@@ -51,6 +53,7 @@ export function createPlayUI(app) {
       const m = /\/vi\/([^/]+)\//.exec(v.thumbnail || '');
       stream = m ? { ytId: m[1] } : app.streamReady.get(`${t.type}/${v.id}`) || null;
     } else if (t.type === 'Audio') stream = app.streamReady.get(`${t.type}/${v.id}`) || null;
+    else if (t.type === 'Music') stream = { ytId: v.ytId };   // kc.music.<videoId>: the id is the YouTube id
     return playItemFor(t, v, { lang: app.langOf(t.id), stream });
   }
 
@@ -142,7 +145,7 @@ export function createPlayUI(app) {
     teardown();
     const prev = app.progress.get(item.videoId);
     const startAt = prev && !isFinished(prev) ? Math.max(0, prev.position - 2) : 0;
-    const cat = app.catOf(data.title.id) || (data.title.type === 'YouTube' ? 'youtube' : data.title.type === 'Audio' ? 'stories' : 'shows');
+    const cat = data.title.type === 'Music' ? 'music' : app.catOf(data.title.id) || (data.title.type === 'YouTube' ? 'youtube' : data.title.type === 'Audio' ? 'stories' : 'shows');
     const returnTo = ctx?.returnTo || (location.hash || '#/');
     ctx = { data, videos, index, item, cat, fromKeep, returnTo, playId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, startedAt: Date.now(),
       position: startAt, duration: 0, paused: false, ready: false, lastTick: 0, lastPos: startAt, lastSave: 0, watched: 0 };
@@ -205,6 +208,7 @@ export function createPlayUI(app) {
   function showToy(c) {
     if (ctx !== c || c.ready || c.failed) return;
     const name = toyFor(c.cat, app.bedtime);
+    toyLayer.dataset.toy = name;
     toyLayer.classList.add('open');
     toyLayer.innerHTML = `<div class="toy-host"></div><button class="round-btn toy-back tapable" aria-label="back">${ICONS.back}</button>`;
     c.toy = mountToy(toyLayer.querySelector('.toy-host'), name, { sound: app.sound, reduced: app.reduced(), item: { ...c.item, poster: c.item.artwork || c.data.title.poster }, reveal });
@@ -218,7 +222,7 @@ export function createPlayUI(app) {
     c.ready = true;
     layer.classList.remove('needs-tap');
     clearTimeout(c.toyTimer);
-    if (c.fromKeep) app.speak('title.' + c.data.title.id);
+    if (c.fromKeep) app.speak(titleClip(c));
     if (c.toy) {
       const brief = performance.now() - c.toyShownAt < 1000;
       const ms = brief || app.reduced() ? 400 : (app.bedtime ? 1500 : 1200);
@@ -337,10 +341,11 @@ export function createPlayUI(app) {
       overlay.classList.remove('open'); overlay.innerHTML = '';
       app.justEnded = action === 'goodbye' && !oneStory ? c.item.videoId : null;
       if (action === 'rest' || oneStory) { app.go('#/'); app.render(); }
+      else if (c.data.title.type === 'Music') app.go('#/c/music');      // the Music page, that song checked with "again"
       else app.go(`#/t/${c.data.title.type}/${c.data.title.id}`);
     };
     overlay.querySelector('.card-back').onclick = () => { app.effect('button'); app.sound.stopVoice(); finish(); };
-    (async () => { await app.speak(oneStory ? 'ui.goodnight' : 'ui.bye'); if (!done && !oneStory) await app.speak('title.' + c.data.title.id); })();
+    (async () => { await app.speak(oneStory ? 'ui.goodnight' : 'ui.bye'); if (!done && !oneStory) await app.speak(titleClip(c)); })();
     setTimeout(finish, 5000);
   }
 
@@ -352,7 +357,9 @@ export function createPlayUI(app) {
     const setup = reasons.some(r => isSetupReason(r, { keyProven }));
     if (setup) app.setupHint = reasons.find(r => isSetupReason(r, { keyProven }));
     else {
-      app.failed = recordFailure(app.failed, { titleId: c.data.title.id, videoId: c.item.videoId, type: c.data.title.type }, reasons, Date.now(), { keyProven });
+      // A song that fails hides only itself, never the whole Music page.
+      const failTitle = c.data.title.type === 'Music' ? c.item.videoId : c.data.title.id;
+      app.failed = recordFailure(app.failed, { titleId: failTitle, videoId: c.item.videoId, type: c.data.title.type }, reasons, Date.now(), { keyProven });
       await app.store.saveFailed(app.failed);
     }
     logPlay({ endReason: 'failed', failures: reasons }, c);
@@ -379,6 +386,15 @@ export function createPlayUI(app) {
     if (index < 0) { app.go(`#/t/${type}/${titleId}`); return; }
     start({ data, videos: data.videos, index, from, fromKeep: true });
   }
+  // A song from the Music page or search (spec 4.11): straight into the YouTube player, its neighbours in the
+  // page's order for next and the pause tiles; the song's title clip at the hand-off.
+  function playSong(songId, from) {
+    const hid = app.hidden();
+    const data = musicData(app.catalogs, { hidden: new Set([...hid.titles, ...hid.videos]) });
+    const index = data.videos.findIndex(v => v.id === songId);
+    if (index < 0) return;
+    start({ data, videos: data.videos, index, from, fromKeep: true });
+  }
   function resume(key, from) {
     const p = app.progress.get(key);
     if (p) return playVideo(p.titleType, p.titleId, key, from);
@@ -393,5 +409,5 @@ export function createPlayUI(app) {
   });
   window.addEventListener('pagehide', () => { if (ctx) { saveProgress(); app.saveUsage(); } });
 
-  return { start, resume, playVideo, itemFor, get active() { return !!ctx; } };
+  return { start, resume, playVideo, playSong, itemFor, get active() { return !!ctx; } };
 }

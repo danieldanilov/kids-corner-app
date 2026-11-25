@@ -1,5 +1,5 @@
 // Her screens: home, category, show/movie/channel pages, rest, good night, the how-many picker (spec 4, 8).
-import { CATEGORIES, BEDTIME_ROWS, kindOf } from './data.js';
+import { CATEGORIES, BEDTIME_ROWS, kindOf, musicData } from './data.js';
 import { keepWatching, myShows, isFinished, showsAllowed, starterShows, newTitles } from './rules.js';
 import { pom, CHIP_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
 import { groupResults } from './search.js';
@@ -48,7 +48,7 @@ function findMeta(app, id) {
 // ---------- home ----------
 export async function renderHome(view, app, { announceBedtime = false } = {}) {
   const hidden = app.hidden().titles;
-  const slots = portrait() ? 4 : 7;
+  const slots = portrait() ? 4 : 6;   // spec 4.1 v6: rows end at x 1026 in landscape
   let rows;
   if (app.bedtime) {
     rows = BEDTIME_ROWS.map(r => ({ key: r.key, sign: r.sign, items: (app.catalogs[`${r.type}/${r.id}`] || []).filter(m => !hidden.has(m.id)).map(m => ({ t: m })) }));
@@ -151,6 +151,7 @@ export function renderSearch(view, app, { focus = false } = {}) {
       else if (act === 'clear') { app.effect('button'); clearTimeout(timer); input.value = ''; runSearch(view, app); input.focus(); }
       else if (act === 'title') { app.effect('poster'); app.go(`#/t/${b.dataset.type}/${b.dataset.id}`); }
       else if (act === 'ep') { app.effect('poster'); app.playui.playVideo(b.dataset.type, b.dataset.id, b.dataset.vid, b); }
+      else if (act === 'song') { app.effect('poster'); app.playui.playSong(b.dataset.vid, b); }
     };
     app.ensureSearchIndex?.();
     runSearch(view, app);
@@ -170,7 +171,9 @@ export function runSearch(view, app, { refresh = false } = {}) {
   for (const list of Object.values(app.catalogs)) for (const m of list || []) if (m?.id && !metas.has(m.id)) metas.set(m.id, m);
   const groups = groupResults(app.search(q, { limit: Infinity, why: refresh ? 'refresh' : 'typed' }), { hidden: app.hidden(), metaOf: (id) => metas.get(id) || null });
   const html = groups.map(g => `<div class="sgroup" data-type="${g.type}"><h3><span class="art">${CHIP_ART[g.cat]}</span>${g.label}</h3><div class="sgrid">${
-    g.items.map(({ hit, meta }) => hit.kind === 'title'
+    g.items.map(({ hit, meta }) => hit.kind === 'song'
+      ? `<div class="sitem"><button class="poster songin tapable" data-cat="music" data-act="song" data-vid="${esc(hit.id)}" aria-label="${esc(hit.title)}"><span class="sart"><span class="fallback">${CHIP_ART.music}</span>${hit.poster ? `<img src="${esc(hit.poster)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}</span><span class="sqfoot">${CHIP_ART.music}</span></button><span class="epname">${esc(hit.title)}</span></div>`
+      : hit.kind === 'title'
       ? `<div class="sitem">${posterHtml(meta, app, { squareIn: true, data: `data-act="title" data-type="${esc(meta.type)}" data-id="${esc(meta.id)}"` })}</div>`
       : `<div class="sitem">${posterHtml(meta, app, { squareIn: true, data: `data-act="ep" data-type="${esc(meta.type)}" data-id="${esc(meta.id)}" data-vid="${esc(hit.id)}"` }).replace(`aria-label="${esc(meta.name)}"`, `aria-label="${esc(meta.name + ': ' + hit.name)}"`)}<span class="epname">${esc(hit.name)}</span></div>`).join('')
   }</div></div>`).join('');
@@ -188,6 +191,7 @@ export function runSearch(view, app, { refresh = false } = {}) {
 export async function renderCategory(view, app, catId) {
   const cat = catById(catId);
   if (!cat) return app.go('#/');
+  if (cat.music) return renderMusic(view, app, cat);
   const { buildRows } = await import('./data.js');
   const rows = buildRows(cat, app.catalogs, { hidden: app.hidden().titles });
   // Each type group (and the Hebrew channels) starts on a fresh column, so shapes never mix in a column.
@@ -214,6 +218,43 @@ export async function renderCategory(view, app, catId) {
     if (b.dataset.act === 'home') { app.effect('button'); app.go('#/'); }
     else if (b.dataset.act === 'cat') { app.effect('chip'); app.speak('cat.' + cat.id); }
     else if (b.dataset.act === 'title') { app.effect('poster'); app.go(`#/t/${b.dataset.type}/${b.dataset.id}`); }
+  };
+}
+
+// ---------- Music page (spec 4.11) ----------
+// One sideways shelf: each row starts on a fresh column with a 120 px divider (a note and the row's name, for the
+// grown-up), then its songs as landscape thumbnails at the episode-tile size; Pom on the cushion at the end. A tap
+// plays the song in the YouTube player. After a song ends, it's checked and carries a big "again".
+function renderMusic(view, app, cat) {
+  const hid = app.hidden();
+  const data = musicData(app.catalogs, { hidden: new Set([...hid.titles, ...hid.videos]) });
+  const ended = app.justEnded;
+  app.justEnded = null;
+  const songs = data.rows.map(r => `<div class="mdiv" aria-hidden="true">${CHIP_ART.music}<span>${esc(r.label)}</span></div>` + r.songs.map(v => {
+    const p = app.progress.get(v.id);
+    const done = p && isFinished(p);
+    const isEnded = ended === v.id;
+    return `<button class="ep song tapable ${isEnded ? 'just-ended' : ''}" data-act="song" data-vid="${esc(v.id)}" data-cat="music" aria-label="${esc(v.title)}">
+      <span class="fallback">${CHIP_ART.music}</span>${v.thumbnail ? `<img src="${esc(v.thumbnail)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+      ${done ? `<span class="ep-check">${ICONS.check}</span>` : ''}${isEnded ? `<span class="again-btn" data-cat="music">${ICONS.again}</span>` : ''}</button>`;
+  }).join('')).join('');
+  view.className = 'screen category music';
+  view.innerHTML = `
+    <header class="page-top">${homeBtn()}${chipHtml(cat, app, true)}<h1 class="page-name">${esc(cat.label)}</h1>
+      <div class="pager">${pagerHtml()}</div></header>
+    <div class="shelf music-shelf" data-cat="music">
+      ${songs}
+      <div class="shelf-end pom-pokeable" aria-hidden="true">${pom('day')}${CUSHION}</div>
+    </div>`;
+  const { shelf, update } = wireShelf(view, app);
+  const target = view.querySelector('.just-ended');
+  if (target) { shelf.scrollLeft = Math.max(0, target.offsetLeft - 140); update(); }
+  view.onclick = (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'home') { app.effect('button'); app.go('#/'); }
+    else if (b.dataset.act === 'cat') { app.effect('chip'); app.speak('cat.music'); }
+    else if (b.dataset.act === 'song') { app.effect('poster'); app.playui.playSong(b.dataset.vid, b); }
   };
 }
 

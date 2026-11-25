@@ -23,23 +23,28 @@ export function createFakePlayer({ fake, ytContainer = null }) {
       // cfg.adMs: a pre-roll ad before the content ('ad' true, muted under ytAdMute; 'ad' false, sound back).
       const yt = item.kind === 'youtube' && ytContainer;
       const setMuted = (m) => { globalThis.__ytMuted = m; (globalThis.__ytMuteLog = globalThis.__ytMuteLog || []).push(m); };
+      // During an ad the layer leaves YouTube's Skip reachable: the bottom-right quadrant, from the ad's first moment.
+      const skipHole = (on) => { const sh = yt && ytContainer.querySelector('.fake-yt-shield'); if (sh) sh.style.clipPath = on ? 'polygon(0 0, 100% 0, 100% 50%, 50% 50%, 50% 100%, 0 100%)' : ''; };
       if (yt) {
         ytContainer.innerHTML = '<div class="fake-yt" style="position:absolute;inset:0;background:#2b2b2b"></div>' + (ytShield ? '<div class="fake-yt-shield" style="position:absolute;inset:0;z-index:2"></div>' : '');
-        ytContainer.querySelector('.fake-yt').addEventListener('pointerdown', () => { globalThis.__ytTaps = (globalThis.__ytTaps || 0) + 1; t.pause?.(); });
+        ytContainer.querySelector('.fake-yt').addEventListener('pointerdown', (e) => { globalThis.__ytTaps = (globalThis.__ytTaps || 0) + 1; if (inAd) { const r = ytContainer.getBoundingClientRect(); globalThis.__ytSkipTaps = (globalThis.__ytSkipTaps || 0) + ((e.clientX - r.left) / r.width > .5 && (e.clientY - r.top) / r.height > .5 ? 1 : 0); return; } t.pause?.(); });
         ytContainer.querySelector('.fake-yt-shield')?.addEventListener('pointerdown', (e) => {
           e.stopPropagation(); globalThis.__shieldTaps = (globalThis.__shieldTaps || 0) + 1;
           const r = ytContainer.getBoundingClientRect(); emit('shield-tap', { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
         });
       }
       const adMs = yt ? (cfg.adMs || 0) : 0;
+      let inAd = false;
+      const adStart = () => { inAd = true; skipHole(true); if (ytAdMute) setMuted(true); emit('ad', { active: true }); };
+      const adEnd = () => { inAd = false; skipHole(false); if (ytAdMute) setMuted(false); emit('ad', { active: false }); };
       // cfg.midAd {afterMs, ms}: an ad partway into the content (no 'ready' after it, only 'ad' false).
       if (yt && cfg.midAd) {
-        later(loadMs + 10 + cfg.midAd.afterMs, () => { playing = false; if (ytAdMute) setMuted(true); emit('ad', { active: true }); });
-        later(loadMs + 10 + cfg.midAd.afterMs + cfg.midAd.ms, () => { if (ytAdMute) setMuted(false); emit('ad', { active: false }); playing = true; });
+        later(loadMs + 10 + cfg.midAd.afterMs, () => { playing = false; adStart(); });
+        later(loadMs + 10 + cfg.midAd.afterMs + cfg.midAd.ms, () => { adEnd(); playing = true; });
       }
       if (adMs) {
-        later(loadMs / 2, () => { if (ytAdMute) setMuted(true); emit('ad', { active: true }); });
-        later(loadMs / 2 + adMs, () => { if (ytAdMute) setMuted(false); emit('ad', { active: false }); });
+        later(loadMs / 2, adStart);
+        later(loadMs / 2 + adMs, adEnd);
       }
       later(loadMs + 10 + (needsTap ? 4000 : 0) + adMs, () => {
         if (failAll) { emit('failed-all', { reasons: ['probe-duration', 'no-cached-stream'] }); return; }

@@ -570,7 +570,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     if (!yt) { rep.failures.push('no_yt_container'); queueMicrotask(() => finish('failed-all', ['no_yt_container'])); return; }
     let started = false, paused = false, endedByUs = false, stopping = false, lastSeek = null, seekRetried = false;
     let stallT = null, seekT = null, needsTapT = null, lastEmit = -1;
-    let ad = false, adStart = 0, needsTapShown = false, lastClock = null;
+    let ad = false, adStart = 0, needsTapShown = false, lastClock = null, seekOnMove = null;
     rep.ads = 0; rep.adSeconds = 0;
     yt.resetProgress();
     yt.shield(pol.shield);
@@ -610,6 +610,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     const onStateImpl = st => {
         if (ad && st !== YT_STATE.ENDED) { yt.show(true); return; } // an ad is shown (muted, shielded), never read as pause or start
         if (endedByUs || stopping) { if (st !== YT_STATE.PAUSED && st !== YT_STATE.ENDED) yt.show(false); return; }
+        if (seekOnMove != null && (st === YT_STATE.PLAYING || st === YT_STATE.BUFFERING)) { const t = seekOnMove; seekOnMove = null; seekNow(t); }
         if (st === YT_STATE.PLAYING) {
           clearTimeout(needsTapT); clearT(); yt.show(true);
           if (!started) { started = true; markReady(); }
@@ -663,9 +664,18 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     };
     needsTapT = setTimeout(checkTap, o.ytNeedsTapMs + (sync ? 0 : 3000));
     s._ctl.pause = () => { yt.show(false); yt.pause(); };
+    const seekNow = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
+    // A seek while paused (the app's +15/-15 live on its pause screen) is held and made at resume: YouTube may
+    // ignore a seek on a paused player, or start playing on it, and either would lose the jump or our pause screen.
+    // At resume it is made once YouTube is moving again (buffering or playing), since a paused player may ignore it.
+    let pendingSeek = null;
     // After our own end nothing may play again: the end panel would be one frame away.
-    s._ctl.resume = () => { if (endedByUs) return; yt.play(); };
-    s._ctl.seek = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
+    s._ctl.resume = () => {
+      if (endedByUs) return;
+      if (pendingSeek != null) { seekOnMove = pendingSeek; pendingSeek = null; }
+      yt.play();
+    };
+    s._ctl.seek = t => { if (paused && !endedByUs) { pendingSeek = t; return; } seekNow(t); };
     ytBusy = true;
     const host = yt;
     cleanup(() => {

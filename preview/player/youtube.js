@@ -24,13 +24,16 @@ export function classifyAd({ state, contentDuration, progress, clockRunning }) {
 // Muted while an ad plays; content always gets its sound back unless the app itself asked for silence.
 export const desiredMute = ({ ad, appMuted }) => !!(ad || appMuted);
 
-// The blocking layer covers the whole player. Holes, as fractions of the player box: YouTube's Skip button
-// during an ad (measured at x 85-98 %, y 83-93 % of a 640x360 player; offered after 5 s), and its big play
-// button when YouTube shows its own start screen because iOS refused the start.
-export const SKIP_HOLE = { x: 0.83, y: 0.79, w: 0.165, h: 0.16 };
+// The blocking layer covers the whole player. Holes, as fractions of the player box:
+// - during an ad, the whole bottom-right quadrant, from the first moment. YouTube puts Skip a fixed number of
+//   pixels from the box's bottom-right corner, so as a fraction it moves with the box's size (83-93 % down in a
+//   360 px box, 94-97 % in the app's 962 px portrait box); the quadrant holds it at any size, while the ad's
+//   title and advertiser link (top) and its "Sponsored" info button (bottom-left) stay covered;
+// - YouTube's big play button, when it shows its own start screen because iOS refused the start.
+export const SKIP_HOLE = { x: 0.5, y: 0.5, w: 0.5, h: 0.5 };
 export const PLAY_HOLE = { x: 0.4, y: 0.37, w: 0.2, h: 0.26 };
 export function holeFor({ ad, adElapsed = 0, needsTap = false, skipHole = true }) {
-  if (ad) return skipHole && adElapsed >= 5 ? SKIP_HOLE : null;
+  if (ad) return skipHole ? SKIP_HOLE : null; // adElapsed kept in the signature for callers; Skip's timing is YouTube's
   return needsTap ? PLAY_HOLE : null;
 }
 // Four rectangles around the hole (or one covering everything): blocks taps without covering pixels' meaning.

@@ -9,6 +9,8 @@ import { createPlayback } from './playback.js';
 import { renderHome, renderCategory, renderTitle, renderRest, renderGoodnight, renderHowMany } from './views.js';
 import { createPlayUI } from './playui.js';
 import { renderParent, openGate } from './parent.js';
+import { buildIndex, search as searchIndex, loadSearchDocs } from './search.js';
+import { crawlEpisodes } from './episodes-index.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -206,6 +208,35 @@ async function boot() {
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) setupUpdates();
   document.documentElement.classList.add('ready');
   render();
+  scheduleSearchIndex();
+}
+
+// ---------- search index (the search screen comes with the Designer's spec) ----------
+// Titles, channel videos and story episodes load once the app has been idle a few seconds; series episode names
+// follow in the background, two shows at a time, paused whenever something plays or the app is in the background.
+app.searchIndex = buildIndex([]);
+app.search = (q, opts) => searchIndex(app.searchIndex, q, opts);
+function scheduleSearchIndex() {
+  let delay = 8000;
+  try { delay = +localStorage.getItem('kcIndexDelay') || delay; } catch { /* default */ }
+  const start = async () => {
+    if (app.playing || document.hidden) { setTimeout(start, 5000); return; }
+    const docs = await loadSearchDocs(app.catalogs, { fetchJson: defaultFetchJson });
+    app.searchIndex = buildIndex(docs);
+    const version = (await defaultFetchJson('https://danieldanilov.github.io/kids-stremio-catalog/manifest.json').catch(() => ({}))).version || 'unknown';
+    const seriesIds = [...new Set(Object.entries(app.catalogs).filter(([k]) => k.startsWith('series/')).flatMap(([, list]) => (list || []).map(m => m.id)))];
+    let pending = null, rebuildTimer = null;
+    const rebuild = () => { rebuildTimer = null; if (pending) { app.searchIndex = buildIndex([...docs, ...pending]); pending = null; } };
+    await crawlEpisodes({
+      seriesIds, version, fetchJson: defaultFetchJson,
+      store: { get: () => app.store.getKV('episodeIndex'), set: (v) => app.store.setKV('episodeIndex', v) },
+      isBusy: () => app.playing || document.hidden,
+      onProgress: (eps) => { pending = eps; if (!rebuildTimer) rebuildTimer = setTimeout(rebuild, 3000); },   // rebuild at most every 3 s
+    });
+    clearTimeout(rebuildTimer); rebuild();
+    app.searchReady = true;
+  };
+  setTimeout(() => { start().catch(() => {}); }, delay);
 }
 
 boot();

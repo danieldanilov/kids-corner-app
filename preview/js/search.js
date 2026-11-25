@@ -26,7 +26,8 @@ function keysOf(text) {
   return { words: [...words], compact: [n.replace(/ /g, ''), latin.replace(/ /g, '')] };
 }
 
-const KIND_RANK = { title: 0, video: 1, episode: 1 };
+// Titles first, then episodes (of shows and stories), then channel videos.
+const KIND_RANK = { title: 0, episode: 1, video: 1.3 };
 
 export function buildIndex(docs) {
   return docs.map(d => ({ ...d, keys: keysOf(d.name), parentKeys: d.parentName ? keysOf(d.parentName) : null }));
@@ -49,7 +50,7 @@ export function search(index, query, { limit = 60 } = {}) {
     if (!(matchWordSet(qOwn) || matchWordSet(qLatin))) continue;
     const own = d.keys.compact[0], lat = d.keys.compact[1], qc = q.replace(/ /g, ''), qlc = qLatin.join('');
     if (own.startsWith(qc) || lat.startsWith(qlc)) score += 100;
-    if (qWords.every(w => d.keys.words.some(x => x.startsWith(w)))) score += 40;
+    if (qWords.every(w => words.some(x => x.startsWith(w)))) score += 40;   // every word starts a word of the item or its show
     score -= KIND_RANK[d.kind] * 60;
     score -= Math.min(30, d.name.length / 4);
     out.push({ ...d, score });

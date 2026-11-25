@@ -143,7 +143,7 @@ export const youtubeHostFor = (settings) => (settings && settings.youtubeSignIn 
 export const STARTER_COUNT = 8;
 export function starterShows(showsRow, { favs = [], pinned = [], hidden = new Set() } = {}) {
   if (favs.length || pinned.length) return [];
-  return (showsRow || []).filter(t => t?.id && !hidden.has(t.id)).slice(0, STARTER_COUNT);
+  return (showsRow || []).filter(t => t?.id && !hidden.has(t.id) && !String(t.id).startsWith('kc.music.')).slice(0, STARTER_COUNT);   // never a song
 }
 
 // New titles: the first run records every catalog title as the baseline (0); a title first seen later keeps

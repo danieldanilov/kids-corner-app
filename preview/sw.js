@@ -1,6 +1,6 @@
 // Kids Corner service worker: app shell, catalog JSON and fonts cached so the Home Screen app opens instantly.
 // Never caches video or audio, range requests, Torrentio, the resolver, TorBox or YouTube.
-const VERSION = '1471af852258';
+const VERSION = '079bd7fa7df1';
 const PRECACHE = ["./","css/app.css","css/toys.css","icons/apple-touch-icon.png","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","./index.html","js/art.js","js/connection.js","js/controls.js","js/data.js","js/episodes-index.js","js/fake-player.js","js/gate.js","js/main.js","js/parent.js","js/playback.js","js/playui.js","js/rules.js","js/search.js","js/secrets.js","js/sound.js","js/store.js","js/toys.js","js/views.js","manifest.webmanifest","player/engine.js","player/index.js","player/learned.js","player/mse.js","player/probe.js","player/remux-worker.js","player/remux.js","player/select.js","player/silent.js","player/sources.js","player/vendor/MEDIABUNNY-LICENSE.txt","player/vendor/mediabunny.min.mjs","player/youtube.js","voice/index.json"];
 // The preview copy (/kids-corner-app/preview/) keeps its own shell cache so the two never delete each other's.
 const PREVIEW = self.registration.scope.includes('/preview/');
@@ -43,6 +43,13 @@ async function trim(cacheName, max) {
   for (let i = 0; i < keys.length - max; i++) await c.delete(keys[i]);
 }
 
+// A clip's URL carries its content hash (?v=); once a newer recording is cached, older copies of that clip go.
+async function dropOldVoice(url) {
+  if (!url.search) return;
+  const c = await caches.open(VOICE);
+  for (const k of await c.keys()) { const u = new URL(k.url); if (u.pathname === url.pathname && u.search !== url.search) await c.delete(k); }
+}
+
 function staleWhileRevalidate(e, cacheName) {
   return caches.open(cacheName).then(async (c) => {
     const hit = await c.match(e.request);
@@ -74,7 +81,7 @@ self.addEventListener('fetch', (e) => {
   const here = url.origin === self.location.origin && url.href.startsWith(self.registration.scope);
 
   if (here) {
-    if (url.pathname.includes('/voice/') && url.pathname.endsWith('.m4a')) { e.respondWith(cacheFirst(e, VOICE)); return; }
+    if (url.pathname.includes('/voice/') && url.pathname.endsWith('.m4a')) { e.respondWith(cacheFirst(e, VOICE).then((r) => { e.waitUntil(dropOldVoice(url)); return r; })); return; }
     if (url.pathname.includes('/testbed/')) return;
     if (!PREVIEW && url.pathname.includes('/preview/')) return;   // the preview has its own worker; the live one stays out
     if (req.mode === 'navigate') { e.respondWith(caches.match(new URL('./', self.registration.scope).href, { ignoreSearch: true }).then(r => r || fetch(req))); return; }

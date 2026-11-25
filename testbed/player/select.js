@@ -44,12 +44,24 @@ export function nameMatchTail(text, names) {
 }
 export function nameMatches(text, names) { return nameMatchTail(text, names) != null; }
 
-// A sequel marker right after the matched name: 2 to 9 (roman already folded), or Part/Chapter/Часть N.
+const isYear = w => /^(19|20)\d{2}$/.test(w || '');
+const isReleaseWord = w => new RegExp('^(?:' + NOISE.source.replace(/^\\b\(|\)\\b$/g, '') + ')$').test(w || '');
+// A sequel marker right after the matched name: 2 to 9 (II to IX already folded), Part/Chapter/Часть N, or a
+// lone I, V, X, XI to XIV followed by a year, a release word or nothing ("The Land Before Time X"). A Russian
+// «и»/«в» followed by title words isn't a marker; the title-words rule below covers those files.
 function sequelAfter(tail) {
   const [a, b] = tail;
   if (/^[2-9]$/.test(a || '')) return true;
+  if (/^(i|v|x|xi|xii|xiii|xiv)$/.test(a || '') && (b === undefined || isYear(b) || isReleaseWord(b))) return true;
   return /^(part|pt|chapter|chast|chast'|chastʹ)$/.test(a || '') && /^\d{1,2}$/.test(b || '');
 }
+// Title words left after the name, once brackets, the release group, years and release words are dropped.
+function titleWordsAfter(fileBase, names) {
+  const prep = String(fileBase).replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ').replace(/-[A-Za-z0-9]+$/, '');
+  const m = nameMatchTail(prep, names);
+  return m ? m.tail.filter(w => !isYear(w) && !isReleaseWord(w) && !/^\d+$/.test(w)) : [];
+}
+const LISTY = /,|\bpack\b|\bcollection\b|сборник|\bmix\b/i;
 
 export function parseEpisode(fn) {
   if (typeof fn !== 'string' || !fn) return null;
@@ -88,7 +100,7 @@ export function seasonFrom(text) {
   return m ? +m[1] : null;
 }
 
-const NOISE = /\b(2160p|1440p|1080p|1080i|720p|576p|480p|360p|4k|uhd|fhd|hd|sd|sdtv|hdtv|pdtv|web|webdl|web dl|webrip|web rip|bluray|blu ray|bdrip|brrip|dvdrip|dvd|hdrip|remux|x264|x265|h ?264|h ?265|hevc|avc|aac\d*|ac3|eac3|ddp?\d*|dd\d*|atmos|truehd|dts|flac|opus|mp3|10bit|8bit|hdr\d*|dv|proper|repack|internal|multi\d*|dual|dub|dubbed|eng|english|rus|russian|subs?|dsnp|amzn|nf|hmax|atvp|itunes|ia|complete|uncut|extended|remastered|rip|mkv|mp4|avi)\b/g;
+const NOISE = /\b(2160p|1440p|1080p|1080i|720p|576p|480p|360p|4k|uhd|fhd|hd|sd|sdtv|hdtv|pdtv|web|webdl|web dl|webrip|web rip|dl|bluray|blu ray|bdrip|brrip|dvdrip|dvd|hdrip|remux|x264|x265|h ?264|h ?265|hevc|avc|aac\d*|ac3|eac3|ddp?\d*|dd\d*|atmos|truehd|dts|flac|opus|mp3|10bit|8bit|hdr\d*|dv|proper|repack|internal|multi\d*|dual|dub|dubbed|eng|english|rus|russian|subs?|dsnp|amzn|nf|hmax|atvp|itunes|ia|complete|uncut|extended|remastered|rip|mkv|mp4|avi)\b/g;
 // What is left of a file's name once episode numbers, quality and release tags and years are removed.
 export function fileTitle(fileBase) {
   let t = String(fileBase || '').replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ').replace(/-[A-Za-z0-9]+$/, '');
@@ -188,10 +200,13 @@ export function hardSkip(c, item = {}, caps = {}) {
     if (item.type !== 'series') return 'wrong_show';
     // The nearest folder with any title text speaks for the file; the pack may vouch only when none does.
     const speaking = c.folder.split('/').reverse().find(f => fileTitle(f));
-    if (speaking != null ? !nameMatches(speaking, names) : !nameMatches(c.torrent, names)) return 'wrong_show';
+    // ...and a torrent name that lists titles ("Kids pack (Bluey, Peppa Pig, …)") vouches for nothing.
+    if (speaking != null ? !nameMatches(speaking, names) : (!nameMatches(c.torrent, names) || LISTY.test(c.torrent))) return 'wrong_show';
     if (c.title && !titleMatches(c.title, item.episodeName)) return 'wrong_show';
-  } else if (item.type !== 'series' && sequelAfter(own.tail)) {
-    return 'wrong_show'; // "Moana 2" for Moana: a sequel the catalog name doesn't have
+  } else if (item.type !== 'series') {
+    if (sequelAfter(own.tail)) return 'wrong_show'; // "Moana 2" for Moana: a sequel the catalog name doesn't have
+    // "Ice.Age.The.Meltdown.mkv" for Ice Age: title words after the name need the item's year in the file.
+    if (titleWordsAfter(c.fileBase, names).length && !(item.year && c.fileYears.some(y => Math.abs(y - +item.year) <= 1))) return 'title_unverified';
   }
   const hasRuntime = +item.runtimeMin > 0;
   if (!hasRuntime && !ownName) return 'no_runtime_unverified';

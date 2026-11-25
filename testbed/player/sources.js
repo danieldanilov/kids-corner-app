@@ -90,9 +90,21 @@ export async function resolveViaWorker({ workerUrl, appToken, url, fetchFn = fet
   if (r.status === 403) return { status: 'fatal', reason: 'origin' };
   if (r.status === 200 && j.status === 'ok' && typeof j.url === 'string') return { status: 'ok', url: j.url, expires: j.expires };
   if (r.status === 200 && j.status === 'downloading') return { status: 'skip', reason: 'downloading' };
+  if (r.status === 200 && j.status === 'failed' && j.reason === 'torbox_auth') return { status: 'fatal', reason: 'torbox_auth' };
   if (r.status === 200 && j.status === 'failed') return { status: 'skip', reason: String(j.reason || 'failed') };
   if (j.status === 'upstream_error') return { status: 'skip', reason: 'upstream_' + (j.reason || r.status) };
   return { status: 'skip', reason: r.status === 200 ? 'bad_response' : 'http_' + r.status };
 }
 
 export const scrubSecrets = s => String(s ?? '').replace(/[a-z]+:\/\/\S+/gi, '<url>').replace(/[A-Za-z0-9_-]{20,}/g, '<redacted>').slice(0, 200);
+
+// Why a stream list produced nothing to try. Setup-type codes (list_failed, list_empty, none_cached) point at the
+// config, the key or an outage and must not hide a title; no_candidates means real streams all failed the guards.
+const NOT_CONTENT = new Set(['uncached', 'no_url', 'junk']);
+export function listOutcome({ error, streams, ranked, skipped } = {}) {
+  if (error) return 'list_failed';
+  if (!streams || !streams.length) return 'list_empty';
+  if (ranked && ranked.length) return null;
+  const reasons = Object.keys(skipped || {});
+  return reasons.length && reasons.every(r => NOT_CONTENT.has(r)) ? 'none_cached' : 'no_candidates';
+}

@@ -318,6 +318,14 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     // still (seen after a resume point). One still second with data ahead: nudge it.
     let lastT = -1, still = 0;
     const freeze = setInterval(() => {
+      // Gap jump: a source whose audio timestamps jump leaves a hole in the buffer, and MSE waits at a hole forever.
+      // Step over a hole shorter than a second when data follows it.
+      if (media && !video.paused && !video.ended && video.readyState < 3) {
+        const t = video.currentTime, b = video.buffered;
+        let inRange = false, next = null;
+        for (let i = 0; i < b.length; i++) { if (b.start(i) <= t && b.end(i) > t + 0.1) inRange = true; if (b.start(i) > t && b.start(i) - t < 1 && next == null) next = b.start(i); }
+        if (!inRange && next != null) { rep.gapJumps = (rep.gapJumps || 0) + 1; video.currentTime = next + 0.01; video.play().catch(() => {}); still = 0; lastT = next; return; }
+      }
       if (!media || video.paused || video.ended || video.readyState < 3) { still = 0; lastT = video.currentTime; return; }
       const t = video.currentTime, end = bufferedEnd();
       if (Math.abs(t - lastT) < 0.02 && end != null && end - t > 1) {
@@ -402,9 +410,9 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         if (msg.runId !== runId) return;
         if (msg.op === 'segment') {
           let which = 'main', offset = null;
-          // WebKit's audio/mpeg buffer silently drops everything after a negative timestampOffset, so clamp at 0
-          // (MP3 encoder delay makes the first frame about -25 ms: an inaudible shift).
-          if (msg.kind === 'audio') { which = 'audio'; if (!audioStarted) { audioStarted = true; offset = Math.max(0, msg.startSec || 0); } }
+          // audio/mpeg runs in sequence mode: its offset is set at the start of a run and after a source jump.
+          // The remuxer drops frames before 0, since WebKit drops everything after a negative timestampOffset.
+          if (msg.kind === 'audio') { which = 'audio'; if (!audioStarted || msg.discontinuity) { audioStarted = true; offset = Math.max(0, msg.startSec || 0); } }
           sink.append(msg.data, which, offset).then(() => {
             if (msg.kind === 'media' && !firstMedia) {
               firstMedia = true; mark('firstAppend');

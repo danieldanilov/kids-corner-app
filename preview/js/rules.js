@@ -163,3 +163,15 @@ export function newTitles(orderedIds, seen, now = Date.now()) {
   }
   return out;
 }
+
+// YouTube sign-in status for the grown-ups screen. The app can't read YouTube's cookies; what it can see is
+// whether YouTube plays on youtube.com (the sign-in switch on) since the last sign-in attempt had ads. No such
+// play yet: unknown. Ad-free plays: likely signed in (Premium); any ad: likely not.
+export function ytSigninStatus({ plays = [], attempt = null, signInOn = false }) {
+  if (!signInOn) return { state: 'off', plays: 0, withAds: 0 };
+  const since = attempt?.at || 0;
+  const seen = plays.filter(p => p.kind === 'youtube' && p.youtubeHost === 'youtube' && p.at > since && typeof p.ads === 'number');
+  const withAds = seen.filter(p => p.ads > 0).length;
+  if (!seen.length) return { state: 'unknown', plays: 0, withAds: 0 };
+  return { state: withAds ? 'unlikely' : 'likely', plays: seen.length, withAds };
+}

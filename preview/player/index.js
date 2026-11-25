@@ -5,7 +5,7 @@ import { rankStreams } from './select.js';
 import { decide } from './probe.js';
 import { fetchStreams, fetchCinemeta, resolveViaWorker, scrubSecrets, listOutcome } from './sources.js';
 import { createMseSink, isTypeSupported, mediaSourceClass } from './mse.js';
-import { createYouTubeHost, YT_STATE, ytHostName } from './youtube.js';
+import { createYouTubeHost, YT_STATE, ytHostName, classifyAd, desiredMute, holeFor } from './youtube.js';
 import { createLearned } from './learned.js';
 import { SILENT_MP4, SILENT_M4A } from './silent.js';
 
@@ -20,6 +20,10 @@ export const DEFAULTS = {
   warmMaxAgeMs: 30 * 60e3,
   ytEndGuardSec: 0.6,    // stop this close to the end so YouTube's end panel never shows
   ytNeedsTapMs: 2500,
+  ytShield: false,       // blocking layer over the YouTube player (Boss ruling 2026-11-25). Off until the app
+                         // handles 'shield-tap': with it on, a tap no longer reaches YouTube (so no tap-to-pause)
+  ytAdMute: true,        // mute while an ad plays; content always gets its sound back
+  ytSkipHole: true,      // keep YouTube's Skip button reachable during an ad (after 5 s)
 };
 
 const uid = () => (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -91,12 +95,13 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     if (!ytContainer) return null;
     if (yt && yt.host === name) return yt;
     if (yt) yt.destroy();
-    try { yt = createYouTubeHost(ytContainer, { muted: !!o.muted || mutedNow, host: name }); } catch { yt = null; }
+    try { yt = createYouTubeHost(ytContainer, { muted: mutedNow, host: name }); } catch { yt = null; }
     return yt;
   }
-  let mutedNow = false;
+  let mutedNow = !!o.muted; // options.muted is the starting state; setMuted() changes it
   // Created early so the first YouTube tap lands on a ready player.
   ensureYt(wantedYtHost);
+  if (o.debug) Object.defineProperty(globalThis, '__kcYt', { get: () => yt, configurable: true });
   function setYouTubeHost(h) {
     wantedYtHost = ytHostName(h);
     if (!ytBusy) ensureYt(wantedYtHost); // warm the new host now, so its first tap is fast
@@ -230,7 +235,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   }
 
   // ---- session ----
-  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false, youtubeHost: hostForPlay } = {}) {
+  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false, youtubeHost: hostForPlay, ytShield, ytAdMute } = {}) {
     if (current) current._stop('replaced');
     if (!unlocked) unlock();
     const s = new EventTarget();
@@ -284,7 +289,10 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     if (kind === 'youtube') {
       ensureYt(hostForPlay != null ? ytHostName(hostForPlay) : wantedYtHost);
       rep.youtubeHost = yt?.host;
-      playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly });
+      // Per-play overrides of the player's YouTube policy (the testbed turns the layer on for one play).
+      const pol = { shield: !!(ytShield ?? o.ytShield), adMute: !!(ytAdMute ?? o.ytAdMute) };
+      rep.ytShield = pol.shield;
+      playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly, pol });
     }
     else if (kind === 'audio') playAudio(item, startAt, keepAwake, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f) });
     else if (kind === 'torbox' || kind === 'file') playTorbox(item, startAt, s, { emit, rep, markReady, finish, mark, cleanup: f => cleanup.push(f), isStopped: () => stopped });
@@ -557,11 +565,34 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
 
   // ---- YouTube ----
   function playYouTube(item, startAt, s, ctx) {
-    const { emit, rep, markReady, finish, cleanup, cueOnly } = ctx;
+    const { emit, rep, markReady, finish, cleanup, cueOnly, pol } = ctx;
     rep.path = 'youtube';
     if (!yt) { rep.failures.push('no_yt_container'); queueMicrotask(() => finish('failed-all', ['no_yt_container'])); return; }
     let started = false, paused = false, endedByUs = false, stopping = false, lastSeek = null, seekRetried = false;
     let stallT = null, seekT = null, needsTapT = null, lastEmit = -1;
+    let ad = false, adStart = 0, needsTapShown = false, lastClock = null;
+    rep.ads = 0; rep.adSeconds = 0;
+    yt.resetProgress();
+    yt.shield(pol.shield);
+    const applyPolicy = () => {
+      const st = yt.state(), t = yt.time();
+      const clockRunning = lastClock != null && t > lastClock + 0.05;
+      lastClock = t;
+      const nowAd = !endedByUs && classifyAd({ state: st, contentDuration: yt.duration(), progress: yt.progress(), clockRunning });
+      if (nowAd !== ad) {
+        ad = nowAd;
+        if (ad) { adStart = performance.now(); rep.ads++; yt.show(true); }
+        else rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000);
+        emit('ad', { active: ad });
+        // YouTube can report PLAYING before its last ad message is replaced: re-read the state once the ad clears.
+        if (!ad) queueMicrotask(() => { if (!stopping) onStateImpl(yt.state()); });
+      }
+      if (pol.adMute) {
+        const want = desiredMute({ ad, appMuted: mutedNow });
+        if (want !== yt.isMuted()) (want ? yt.mute() : yt.unMute());
+      }
+      if (pol.shield) yt.shield(true, holeFor({ ad, adElapsed: ad ? (performance.now() - adStart) / 1000 : 0, needsTap: needsTapShown && !started, skipHole: o.ytSkipHole }));
+    };
     const clearT = () => { clearTimeout(stallT); clearTimeout(seekT); stallT = seekT = null; };
     const endNow = () => {
       if (endedByUs) return;
@@ -569,13 +600,15 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       finish('ended');
     };
     const poll = setInterval(() => {
+      applyPolicy();
+      if (ad) return; // during an ad the clock is the ad's: no time events, no end guard
       const t = yt.time(), d = yt.duration();
       if (started) rep.watchedSec = Math.max(rep.watchedSec, Math.round(t - startAt));
       if (started && Math.abs(t - lastEmit) >= 1) { lastEmit = t; emit('time', { position: t, duration: d || null }); }
       if (started && !endedByUs && d > 0 && t >= d - o.ytEndGuardSec && yt.state() === YT_STATE.PLAYING) endNow();
     }, 250);
-    yt.setHandler({
-      onState(st) {
+    const onStateImpl = st => {
+        if (ad && st !== YT_STATE.ENDED) { yt.show(true); return; } // an ad is shown (muted, shielded), never read as pause or start
         if (endedByUs || stopping) { if (st !== YT_STATE.PAUSED && st !== YT_STATE.ENDED) yt.show(false); return; }
         if (st === YT_STATE.PLAYING) {
           clearTimeout(needsTapT); clearT(); yt.show(true);
@@ -596,7 +629,11 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         } else {
           yt.show(false);
         }
-      },
+    };
+    yt.setHandler({
+      onShieldTap(pt) { emit('shield-tap', pt); },
+      onInfo() { applyPolicy(); },
+      onState(st) { applyPolicy(); onStateImpl(st); },
       onError(code) {
         yt.show(false); clearT();
         // 153: YouTube refuses an embed that sends no Referer, which a no-referrer policy on the page causes.
@@ -618,8 +655,9 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       if (started) return;
       const st = yt.state();
       if ((st === YT_STATE.BUFFERING || st === undefined) && ++tapChecks < 6) { needsTapT = setTimeout(checkTap, 1500); return; }
+      if (ad) { needsTapT = setTimeout(checkTap, 1500); return; } // an ad is playing: not a refused start
       if (st === YT_STATE.UNSTARTED || st === YT_STATE.CUED || tapChecks >= 6) {
-        rep.needsTap = true; yt.show(true);
+        rep.needsTap = true; needsTapShown = true; yt.show(true); applyPolicy();
         emit('needs-tap', { state: st, reason: st === YT_STATE.CUED ? 'tap' : 'tap_or_ad' });
       }
     };
@@ -632,6 +670,10 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     const host = yt;
     cleanup(() => {
       stopping = true; clearInterval(poll); clearTimeout(needsTapT); clearT(); host.show(false); host.pause(); host.setHandler(null);
+      host.shield(false);
+      if (ad) rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000);
+      // Stopped mid-ad: give the sound back, so no later play starts muted by this one's ad rule.
+      if (ad && pol.adMute && !mutedNow && host.isMuted()) host.unMute();
       ytBusy = false;
       if (wantedYtHost !== host.host) ensureYt(wantedYtHost); // a switch made during the video applies now
     });

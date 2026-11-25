@@ -157,7 +157,10 @@ export function createPlayUI(app) {
     setRail();
     if (from) { from.classList.add('launch'); setTimeout(() => from.classList.remove('launch'), 400); }
 
-    const s = app.player.play(item, { startAt, youtubeHost: youtubeHostFor(app.settings) });   // the switch applies from the next play
+    // YouTube v2 (player/README.md, spec 4.5): the clear layer over every YouTube play, so no tap reaches YouTube's
+    // out-links (a tap comes back as 'shield-tap'), and ads muted with the sound back for the content.
+    const yt = item.kind === 'youtube';
+    const s = app.player.play(item, { startAt, youtubeHost: youtubeHostFor(app.settings), ...(yt ? { ytShield: true, ytAdMute: true } : {}) });   // the host switch applies from the next play
     ctx.session = s;
     app.playing = true;
     if (item.kind === 'audio') { cover.innerHTML = `<div class="cover-art" data-cat="${cat}"><img src="${item.artwork || data.title.poster || ''}" alt="" onerror="this.remove()"></div>`; setupMedia(item, data); wake(true); }
@@ -177,21 +180,34 @@ export function createPlayUI(app) {
     on('stalled', () => { if (my.item.kind === 'youtube') return; clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => { if (ctx === my) { layer.classList.add('stalled'); autoHide.setPlaying(false); } }, 1000); });
     on('resumed', () => { clearTimeout(my.stallTimer); layer.classList.remove('stalled'); if (my.paused) { my.paused = false; endPause(); setRail(); } playingNow(my); });
     on('ended', () => onEnded(my));
-    on('needs-tap', async () => {
-      clearTimeout(my.toyTimer);
-      if (my.toy) {   // spec 4.8: the toy fades out over 300 ms, no match cut (the video isn't playing yet)
-        toyLayer.style.setProperty('--fade', '300ms'); toyLayer.classList.add('fading');
-        await wait(300);
-        if (ctx !== my) return;
-        my.toy?.destroy(); my.toy = null;
-      }
-      toyLayer.classList.remove('open', 'fading');
-      pauseEl.classList.remove('open'); layer.classList.remove('paused', 'stalled');
-      autoHide.setPlaying(false);
-      layer.classList.add('needs-tap');
+    on('needs-tap', () => showYouTubeOwn(my));
+    // A tap on the playing YouTube video lands on the clear layer: pause through the session, as a touch on TorBox
+    // video does; the 'paused' that follows hides the frame and shows our overlay (4.5, 4.6).
+    on('shield-tap', () => { if (my.ready && !my.paused && !layer.classList.contains('needs-tap')) my.session.pause(); });
+    // An ad (4.8): YouTube's own screen with only our back arrow, muted by the player; when it ends, the content
+    // plays with its sound back and nothing of ours over it.
+    on('ad', (d) => {
+      if (d.active) { showYouTubeOwn(my); layer.classList.add('yt-ad'); }
+      else { layer.classList.remove('yt-ad', 'needs-tap'); if (my.ready && !my.paused) playingNow(my); }
     });
     on('failed-all', (d) => fail(d.reasons || [], my));
     on('report', (d) => { if (d.playId && !my.playerPlayId) { my.playerPlayId = d.playId; } const { playId, ...rest } = d; logPlay({ ...rest, playerPlayId: playId }, my); });
+  }
+
+  // YouTube's own screen (spec 4.8): its start screen waiting for her tap, or an ad. The toy fades out over 300 ms
+  // (no match cut: the content isn't playing yet); only our back arrow shows, in the top band.
+  async function showYouTubeOwn(my) {
+    clearTimeout(my.toyTimer);
+    if (my.toy) {
+      toyLayer.style.setProperty('--fade', '300ms'); toyLayer.classList.add('fading');
+      await wait(300);
+      if (ctx !== my) return;
+      my.toy?.destroy(); my.toy = null;
+    }
+    toyLayer.classList.remove('open', 'fading');
+    pauseEl.classList.remove('open'); layer.classList.remove('paused', 'stalled');
+    autoHide.setPlaying(false);
+    layer.classList.add('needs-tap');
   }
 
   // Match cut (spec 5.5): the player, already playing underneath, is revealed from a point in the toy.

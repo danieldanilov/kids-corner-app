@@ -7,6 +7,43 @@
 // on a warm player (fast start), never a new iframe.
 
 export const YT_STATE = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
+
+// ---- YouTube v2 (Boss ruling 2026-11-25: Daniel accepts breaking YouTube's terms on her iPad) ----
+// Ad detection, from signals measured on real pre-roll and mid-roll ads: during an ad the API keeps the
+// content's id and duration and reports state -1 (2 if paused), while the player's own progressState
+// (sent in its postMessage "infoDelivery") carries the ad's duration with allowSeeking false.
+export function classifyAd({ state, contentDuration, progress, clockRunning }) {
+  if (state === YT_STATE.ENDED) return false;
+  if (progress && Number.isFinite(progress.duration)) {
+    if (progress.allowSeeking === false) return true;  // measured: false for every ad, true for content
+    if (progress.allowSeeking === true) return false;  // content is never muted on a duration difference
+    return contentDuration > 0 && Math.abs(progress.duration - contentDuration) > 1.5;
+  }
+  return state === YT_STATE.UNSTARTED && !!clockRunning;
+}
+// Muted while an ad plays; content always gets its sound back unless the app itself asked for silence.
+export const desiredMute = ({ ad, appMuted }) => !!(ad || appMuted);
+
+// The blocking layer covers the whole player. Holes, as fractions of the player box: YouTube's Skip button
+// during an ad (measured at x 85-98 %, y 83-93 % of a 640x360 player; offered after 5 s), and its big play
+// button when YouTube shows its own start screen because iOS refused the start.
+export const SKIP_HOLE = { x: 0.83, y: 0.79, w: 0.165, h: 0.16 };
+export const PLAY_HOLE = { x: 0.4, y: 0.37, w: 0.2, h: 0.26 };
+export function holeFor({ ad, adElapsed = 0, needsTap = false, skipHole = true }) {
+  if (ad) return skipHole && adElapsed >= 5 ? SKIP_HOLE : null;
+  return needsTap ? PLAY_HOLE : null;
+}
+// Four rectangles around the hole (or one covering everything): blocks taps without covering pixels' meaning.
+export function shieldRects(hole) {
+  if (!hole) return [{ x: 0, y: 0, w: 1, h: 1 }];
+  const { x, y, w, h } = hole;
+  return [
+    { x: 0, y: 0, w: 1, h: y },                 // above
+    { x: 0, y: y + h, w: 1, h: 1 - y - h },     // below
+    { x: 0, y, w: x, h },                       // left
+    { x: x + w, y, w: 1 - x - w, h },           // right
+  ].filter(r => r.w > 0 && r.h > 0);
+}
 let apiPromise = null;
 
 export function loadYouTubeApi() {
@@ -38,9 +75,53 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
   const mount = document.createElement('div');
   mount.style.cssText = 'width:100%;height:100%';
   container.appendChild(mount);
+  if (!container.style.position && getComputedStyle(container).position === 'static') container.style.position = 'relative';
   let player = null, ready = false, handler = null;
   const show = on => { container.style.visibility = on ? 'visible' : 'hidden'; container.dataset.kcVisible = on ? '1' : '0'; };
   show(false);
+
+  // Blocking layer: transparent rectangles over the player, all of it or all but one hole. A tap on it never
+  // reaches YouTube; it goes to the session (onShieldTap) so the app can show its own overlay.
+  const shield = document.createElement('div');
+  shield.className = 'kc-yt-shield';
+  shield.style.cssText = 'position:absolute;inset:0;z-index:2;pointer-events:none';
+  container.appendChild(shield);
+  let shieldOn = false, holeKey = 'none';
+  function layout(hole) {
+    const key = shieldOn ? JSON.stringify(hole) : 'off';
+    if (key === holeKey) return;
+    holeKey = key;
+    shield.replaceChildren();
+    if (!shieldOn) return;
+    for (const r of shieldRects(hole)) {
+      const d = document.createElement('div');
+      d.style.cssText = `position:absolute;left:${r.x * 100}%;top:${r.y * 100}%;width:${r.w * 100}%;height:${r.h * 100}%;` +
+        'pointer-events:auto;background:transparent;touch-action:none;-webkit-tap-highlight-color:transparent;' +
+        '-webkit-touch-callout:none;-webkit-user-select:none;user-select:none';
+      d.addEventListener('pointerdown', e => {
+        e.preventDefault(); e.stopPropagation();
+        const b = container.getBoundingClientRect();
+        handler?.onShieldTap?.({ x: (e.clientX - b.left) / b.width, y: (e.clientY - b.top) / b.height });
+      });
+      shield.appendChild(d);
+    }
+    shield.dataset.hole = hole ? 'open' : 'none';
+  }
+
+  // The player's own infoDelivery messages carry progressState (the ad's duration during an ad).
+  let progress = null;
+  addEventListener('message', e => {
+    let frame = null;
+    try { frame = player?.getIframe?.(); } catch { frame = null; }
+    if (!frame || e.source !== frame.contentWindow) return;
+    let d = e.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
+    const info = d && typeof d === 'object' ? d.info : null;
+    if (info && typeof info === 'object' && info.progressState && typeof info.progressState === 'object') {
+      progress = { duration: +info.progressState.duration, allowSeeking: info.progressState.allowSeeking };
+      handler?.onInfo?.(); // re-judge at once: an ad's first message must not wait for the next poll
+    }
+  });
 
   const readyP = loadYouTubeApi().then(YT => new Promise(resolve => {
     player = new YT.Player(mount, {
@@ -77,6 +158,9 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
     },
     play() { player?.playVideo(); },
     host: ytHostName(host),
+    shield(on, hole = null) { shieldOn = !!on; layout(hole); },
+    progress() { return progress; },
+    resetProgress() { progress = null; },
     destroy() { handler = null; try { player?.destroy(); } catch { /* ignore */ } container.replaceChildren(); },
     mute() { muted = true; try { player?.mute(); } catch { /* ignore */ } },
     unMute() { muted = false; try { player?.unMute(); } catch { /* ignore */ } },

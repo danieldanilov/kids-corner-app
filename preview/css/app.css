@@ -149,7 +149,7 @@ svg { display: block; }
 /* Nothing shows in a shelf's side gutters, so a page edge never leaves a sliver of the next or last column. */
 .cat-shelf { clip-path: inset(-12px var(--gutter) -12px var(--gutter)); }
 .ep-shelf { clip-path: inset(-12px var(--gutter) -12px 0); }
-.group-div { grid-row: 1 / -1; width: 64px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-family: 'Varela Round', var(--font); font-size: 26px; color: var(--ink-2); }
+.group-div { grid-row: 1 / -1; scroll-snap-align: start; width: 64px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-family: 'Varela Round', var(--font); font-size: 26px; color: var(--ink-2); }
 .cat-shelf { top: 168px; left: 0; right: 0; height: 576px; padding: 0 var(--gutter) 8px; scroll-padding-left: var(--gutter); grid-template-rows: repeat(2, 280px); grid-auto-columns: max-content; }
 .cat-shelf .poster { width: 187px; height: 280px; scroll-snap-align: start; }
 .cat-shelf .poster.square { width: 280px; }
@@ -190,7 +190,7 @@ svg { display: block; }
 .poster.songin .sart .fallback svg { width: 40%; }
 .poster.songin .sqfoot { flex: 1; display: grid; place-items: center; }
 .poster.songin .sqfoot svg { width: 56px; height: 56px; }
-.season-div { grid-row: 1 / span 2; width: 56px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-size: 30px; color: var(--ink-2); }
+.season-div { grid-row: 1 / span 2; scroll-snap-align: start; width: 56px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-size: 30px; color: var(--ink-2); }
 .pom-center { position: absolute; inset: 0; display: grid; place-items: center; }
 .pom-center .pom { width: 240px; height: 240px; }
 

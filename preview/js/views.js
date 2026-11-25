@@ -1,5 +1,5 @@
 // Her screens: home, category, show/movie/channel pages, rest, good night, the how-many picker (spec 4, 8).
-import { CATEGORIES, BEDTIME_ROWS, kindOf, musicData } from './data.js';
+import { CATEGORIES, BEDTIME_ROWS, kindOf, musicData, songThumb, MUSIC_PREFIX } from './data.js';
 import { keepWatching, myShows, isFinished, showsAllowed, starterShows, newTitles } from './rules.js';
 import { pom, CHIP_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
 import { groupResults } from './search.js';
@@ -57,7 +57,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     const starter = starterShows(app.catalogs['series/shows'], { favs: app.favs, pinned: app.settings.pinned, hidden });
     const mine = (own.length ? own : starter).map(t => ({ t }));
     const keep = keepWatching([...app.progress.values()], { hidden }).map(p => ({ t: { id: p.titleId, type: p.titleType, name: p.titleName, poster: p.poster, posterShape: p.posterShape }, p }));
-    const picked = app.settings.newRow.filter(t => !hidden.has(t.id));
+    const picked = app.settings.newRow.filter(t => !hidden.has(t.id) && !String(t.id).startsWith(MUSIC_PREFIX));   // songs never sit in New
     const arrived = newTitles(app.catalogOrder || [], app.seen, Date.now()).filter(id => !hidden.has(id) && !picked.some(p => p.id === id)).map(id => findMeta(app, id)).filter(Boolean);
     const fresh = [...picked, ...arrived].map(t => ({ t }));
     rows = [{ key: 'myshows', sign: 'row.myshows', items: mine, ghost: true }, { key: 'keep', sign: 'row.keep', items: keep, keep: true }, { key: 'new', sign: 'row.new', items: fresh }];
@@ -222,6 +222,12 @@ export async function renderCategory(view, app, catId) {
 }
 
 // ---------- Music page (spec 4.11) ----------
+// hq720 first, mqdefault when YouTube has no hq720: a miss is either an error or YouTube's 404 placeholder, a
+// 120x90 grey still the browser still loads, so the width decides. A second miss leaves the category fallback.
+const songImg = (v) => {
+  const t = songThumb(v.ytId);
+  return `<img src="${esc(t.hi)}" data-lo="${esc(t.lo)}" alt="" loading="lazy" decoding="async" onload="if(this.naturalWidth<=120&&this.dataset.lo){this.src=this.dataset.lo;this.dataset.lo=''}" onerror="if(this.dataset.lo){this.src=this.dataset.lo;this.dataset.lo=''}else this.remove()">`;
+};
 // One sideways shelf: each row starts on a fresh column with a 120 px divider (a note and the row's name, for the
 // grown-up), then its songs as landscape thumbnails at the episode-tile size; Pom on the cushion at the end. A tap
 // plays the song in the YouTube player. After a song ends, it's checked and carries a big "again".
@@ -235,7 +241,7 @@ function renderMusic(view, app, cat) {
     const done = p && isFinished(p);
     const isEnded = ended === v.id;
     return `<button class="ep song tapable ${isEnded ? 'just-ended' : ''}" data-act="song" data-vid="${esc(v.id)}" data-cat="music" aria-label="${esc(v.title)}">
-      <span class="fallback">${CHIP_ART.music}</span>${v.thumbnail ? `<img src="${esc(v.thumbnail)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+      <span class="fallback">${CHIP_ART.music}</span>${songImg(v)}
       ${done ? `<span class="ep-check">${ICONS.check}</span>` : ''}${isEnded ? `<span class="again-btn" data-cat="music">${ICONS.again}</span>` : ''}</button>`;
   }).join('')).join('');
   view.className = 'screen category music';
@@ -301,7 +307,10 @@ function wireShelf(view, app) {
       if (!cut.length) return;
       target = Math.min(...cut.map(t => t.offsetLeft));
     }
-    else target = lefts.find(x => x - pad >= left - width + 2 * pad - 1) ?? 0;
+    else {
+      target = lefts.find(x => x - pad >= left - width + 2 * pad - 1) ?? 0;
+      if (target <= lefts[0]) target = 0;   // landing in the first column: go to the very start (a divider may come first)
+    }
     shelf.scrollTo({ left: Math.max(0, target - pad), behavior: app.reduced() ? 'auto' : 'smooth' });
   };
   for (const b of [prev, next]) b.addEventListener('click', (e) => { e.stopPropagation(); app.effect('arrow'); pageTo(+b.dataset.page); });

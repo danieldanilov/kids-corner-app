@@ -100,6 +100,7 @@ async function render() {
   if (token !== renderToken) return;
   if (parts[0] === 'c' && parts[1] === 'music' && app.bedtime) history.replaceState(null, '', '#/');   // Music is hidden at bedtime (spec 4.11)
   else if (parts[0] === 'c' && parts[1]) return renderCategory(view, app, parts[1]);
+  if (parts[0] === 't' && parts[1] === 'Music') { app.go(app.bedtime ? '#/' : '#/c/music'); return; }   // a song has no page of its own
   if (parts[0] === 't' && parts[1] && parts[2]) return renderTitle(view, app, parts[1], parts[2]);
   if (parts[0] === 's') {
     if (!app.bedtime) return renderSearch(view, app);      // already open (the magnifier's tap, or back from the player): kept as it is

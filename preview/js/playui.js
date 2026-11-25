@@ -72,6 +72,7 @@ export function createPlayUI(app) {
 
   async function saveProgress(final = false) {
     if (!ctx || !ctx.duration) return;
+    if (ctx.data.title.type === 'Music' && !final) return;   // a song keeps no halfway spot; only its end (the check mark)
     const { item, data } = ctx;
     const rec = {
       key: item.videoId, titleId: data.title.id, titleType: data.title.type, titleName: data.title.name,
@@ -144,7 +145,8 @@ export function createPlayUI(app) {
     }
     teardown();
     const prev = app.progress.get(item.videoId);
-    const startAt = prev && !isFinished(prev) ? Math.max(0, prev.position - 2) : 0;
+    const song = data.title.type === 'Music';
+    const startAt = !song && prev && !isFinished(prev) ? Math.max(0, prev.position - 2) : 0;   // songs always start from the beginning
     const cat = data.title.type === 'Music' ? 'music' : app.catOf(data.title.id) || (data.title.type === 'YouTube' ? 'youtube' : data.title.type === 'Audio' ? 'stories' : 'shows');
     const returnTo = ctx?.returnTo || (location.hash || '#/');
     ctx = { data, videos, index, item, cat, fromKeep, returnTo, playId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, startedAt: Date.now(),
@@ -321,7 +323,7 @@ export function createPlayUI(app) {
   async function onEnded(c) {
     c.position = c.duration || c.position;
     await saveProgress(true);
-    app.usage = recordEpisodeEnd(app.today());
+    if (c.data.title.type !== 'Music') app.usage = recordEpisodeEnd(app.today());   // songs never count toward a show limit
     const oneStory = app.bedtime && app.settings.bedtime.oneStory;
     if (oneStory) app.usage = { ...app.usage, goodnight: true };
     await app.saveUsage();

@@ -98,6 +98,10 @@ export function musicData(catalogs, { hidden = new Set() } = {}) {
   return { title: { id: 'music', type: 'Music', name: 'Music', poster: videos[0]?.thumbnail || '' }, videos, rows };
 }
 
+// A song's still (review S3): YouTube's 1280x720 hq720 first, since tiles are 416x234 CSS px (832x468 on her iPad);
+// the catalog's 320x180 mqdefault when hq720 is missing.
+export const songThumb = (ytId) => ({ hi: `https://i.ytimg.com/vi/${ytId}/hq720.jpg`, lo: `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg` });
+
 // The spoken-title clip for a title or a song (spec 2.6): songs are title/music.<videoId>.
 export const titleClipId = (id) => (String(id).startsWith(MUSIC_PREFIX) ? 'music.' + String(id).slice(MUSIC_PREFIX.length) : id);
 

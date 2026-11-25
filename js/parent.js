@@ -145,6 +145,13 @@ export async function renderParent(view, app) {
       <p class="hint">Bedtime switches only between videos, never in the middle of one.</p>
     </section>
 
+    <section><h2>YouTube</h2>
+      <div class="field"><span>Use my YouTube sign-in (Premium)</span>${sw('youtubeSignIn', s.youtubeSignIn)}</div>
+      <p class="hint"><b>Why it's off:</b> off, YouTube plays from youtube-nocookie.com, which keeps YouTube from tracking what she watches. Switched on, it plays from youtube.com, which may use your Premium sign-in (no ads) but lets YouTube see her viewing on your account.</p>
+      <p class="hint"><b>To try it:</b> 1. Switch it on here. 2. On the iPad, open Settings → Apps → Safari and turn off Prevent Cross-Site Tracking (on older iPadOS: Settings → Safari). 3. In Safari, go to youtube.com and sign in with the Premium account. Whether the Kids Corner icon uses Safari's sign-in is unchecked: the Home Screen app keeps its own storage, and there's no sign-in inside it yet, so if ads still show after this, it doesn't carry over.</p>
+      <p class="hint"><b>To undo it:</b> switch it off here (the next video plays from youtube-nocookie.com again), and turn Prevent Cross-Site Tracking back on.</p>
+    </section>
+
     <section><h2>Motion</h2><div class="field">${seg('motion', s.motion, [['auto', 'Follow iPad'], ['reduced', 'Reduced'], ['normal', 'Normal']])}</div></section>
 
     <section><h2>Titles</h2>
@@ -163,11 +170,12 @@ export async function renderParent(view, app) {
 
     <section><h2>Playback report</h2>
       <p class="summary">TorBox plays: ${tb.length}. Started: ${started.length}. Median time to first picture: ${fmtS(median)}. All streams failed: ${failedPlays}. Plays that needed a fallback: ${tb.filter(p => (p.fallbacks || []).length).length}.</p>
-      <div class="table-wrap"><table class="report"><tr><th>When</th><th>Title</th><th>Start</th><th>Size</th><th>Picked</th><th>Fallbacks</th><th>Path</th><th>End</th></tr>
+      <div class="table-wrap"><table class="report"><tr><th>When</th><th>Title</th><th>Start</th><th>Size</th><th>Picked</th><th>Fallbacks</th><th>Path</th><th>Smooth</th><th>End</th></tr>
       ${plays.slice(0, 200).map(p => `<tr class="${p.endReason === 'failed' ? 'bad' : ''}"><td>${when(p.at)}</td><td>${esc(p.titleName)} ${esc(p.episodeLabel || '')}</td><td>${fmtS(p.ttffMs)}</td><td>${p.sizeMB ? esc(p.sizeMB) + ' MB' : fmtMB(p.fileSize)}</td>
         <td>${esc(p.candidate ? [p.candidate.filename, p.candidate.res, p.candidate.container].filter(Boolean).join(' · ') : '–')}</td>
         <td>${(p.fallbacks || []).length ? esc((p.fallbacks || []).map(f => f.reason || f).join(', ')) : '0'}</td><td>${esc(p.path || p.kind)}</td>
-        <td>${esc(p.endReason || '')}${(p.failures || []).length ? ': ' + esc(p.failures.join(', ')) : ''}</td></tr>`).join('') || '<tr><td colspan="8">No plays yet.</td></tr>'}</table></div>
+        <td>${['stalls', 'nudges', 'gapJumps'].filter(k => p[k] != null).map(k => `${p[k]} ${k === 'gapJumps' ? 'jumps' : k}`).join(' · ') || '–'}</td>
+        <td>${esc(p.endReason || '')}${(p.failures || []).length ? ': ' + esc(p.failures.join(', ')) : ''}</td></tr>`).join('') || '<tr><td colspan="9">No plays yet.</td></tr>'}</table></div>
       <div class="field"><button class="btn" data-a="copy-report">Copy report as text</button><button class="btn" data-a="clear-report">Clear report</button></div>
     </section>
 
@@ -250,7 +258,8 @@ export async function renderParent(view, app) {
     const swBtn = e.target.closest('[data-switch]');
     if (swBtn) {
       const path = swBtn.dataset.switch, [a, b] = path.split('.');
-      await set(path, !app.settings[a][b]);
+      await set(path, b ? !app.settings[a][b] : !app.settings[a]);
+      if (path === 'youtubeSignIn') { try { app.player.setYouTubeHost?.(app.settings.youtubeSignIn ? 'youtube' : 'nocookie'); } catch { /* the next play carries it anyway */ } }
       return rerender();
     }
     const btn = e.target.closest('[data-a]');

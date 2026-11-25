@@ -37,7 +37,8 @@ function loadYouTubeApi() {
   return ytApi;
 }
 
-function createStandIn({ video, ytContainer, audio }) {
+function createStandIn({ video, ytContainer, audio, options = {} }) {
+  let ytHost = options.youtubeHost || 'nocookie';
   let current = null;
   return {
     unlock() {
@@ -45,7 +46,9 @@ function createStandIn({ video, ytContainer, audio }) {
       loadYouTubeApi().catch(() => {});
     },
     prefetch() {},
-    play(item, { startAt = 0 } = {}) {
+    setYouTubeHost(h) { ytHost = h; },
+    play(item, { startAt = 0, youtubeHost } = {}) {
+      if (youtubeHost) ytHost = youtubeHost;
       current?.stop();
       const t = new EventTarget();
       const t0 = performance.now();
@@ -80,7 +83,7 @@ function createStandIn({ video, ytContainer, audio }) {
           const host = document.createElement('div');
           ytContainer.replaceChildren(host);
           yt = new YT.Player(host, {
-            host: 'https://www.youtube-nocookie.com', videoId: item.ytId, width: '100%', height: '100%',
+            host: ytHost === 'youtube' ? 'https://www.youtube.com' : 'https://www.youtube-nocookie.com', videoId: item.ytId, width: '100%', height: '100%',
             playerVars: { playsinline: 1, rel: 0, iv_load_policy: 3, fs: 0, disablekb: 1, controls: 0, start: Math.floor(startAt || 0), origin: location.origin },
             events: {
               onReady: () => { yt.playVideo(); },

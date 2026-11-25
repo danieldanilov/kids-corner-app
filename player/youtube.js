@@ -29,7 +29,12 @@ export const YT_PLAYER_VARS = {
   autoplay: 0, enablejsapi: 1,
 };
 
-export function createYouTubeHost(container, { muted = false } = {}) {
+export const YT_HOSTS = { nocookie: 'https://www.youtube-nocookie.com', youtube: 'https://www.youtube.com' };
+export const ytHostName = h => (h === 'youtube' ? 'youtube' : 'nocookie');
+
+// host: 'nocookie' (default) or 'youtube'. www.youtube.com is there so Daniel can test whether a signed-in
+// YouTube Premium session removes ads; everything else (parameters, hiding, the end guard) is identical.
+export function createYouTubeHost(container, { muted = false, host = 'nocookie' } = {}) {
   const mount = document.createElement('div');
   mount.style.cssText = 'width:100%;height:100%';
   container.appendChild(mount);
@@ -39,7 +44,7 @@ export function createYouTubeHost(container, { muted = false } = {}) {
 
   const readyP = loadYouTubeApi().then(YT => new Promise(resolve => {
     player = new YT.Player(mount, {
-      host: 'https://www.youtube-nocookie.com',
+      host: YT_HOSTS[ytHostName(host)],
       width: '100%', height: '100%',
       playerVars: { ...YT_PLAYER_VARS, origin: location.origin },
       events: {
@@ -71,6 +76,8 @@ export function createYouTubeHost(container, { muted = false } = {}) {
       return false;
     },
     play() { player?.playVideo(); },
+    host: ytHostName(host),
+    destroy() { handler = null; try { player?.destroy(); } catch { /* ignore */ } container.replaceChildren(); },
     mute() { muted = true; try { player?.mute(); } catch { /* ignore */ } },
     unMute() { muted = false; try { player?.unMute(); } catch { /* ignore */ } },
     isMuted() { try { return !!player?.isMuted(); } catch { return null; } },

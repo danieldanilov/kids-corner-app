@@ -1,10 +1,11 @@
 // The player flow (spec 4.5-4.7, 5, 7): loading moment with the category toy, the rail, pause screen,
 // stall state, goodbye card, sleeping card, limits at episode ends, progress, watch time and the play log.
 import { playItemFor, kindOf } from './data.js';
-import { isSetupReason, isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
+import { youtubeHostFor, isSetupReason, isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
 import { sanitizeReport, secretValues } from './secrets.js';
 import { mountToy, toyFor } from './toys.js';
 import { pom, ICONS, CHIP_ART } from './art.js';
+import { createAutoHide } from './controls.js';
 
 const $ = (s) => document.querySelector(s);
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -17,6 +18,17 @@ export function createPlayUI(app) {
   const rail = $('#rail');
   let ctx = null;            // { data, videos, index, item, session, ... }
   let wakeLock = null;
+  // Full-screen player (Daniel 2026-11-25 (2)): behind a flag until spec v4 lands.
+  let full = false;
+  try { full = localStorage.getItem('kcPlayerV4') === '1'; } catch { /* storage blocked */ }
+  app.fullPlayer = full;
+  const catcher = document.getElementById('touch-catcher');
+  const autoHide = createAutoHide({ onChange: (v) => layer.classList.toggle('controls-hidden', !v) });
+  if (full) {
+    layer.classList.add('full');
+    // A touch on the video only reveals (or tucks away) the controls; it never pauses.
+    catcher.addEventListener('pointerdown', (e) => { e.preventDefault(); autoHide.touchVideo(); });
+  }
 
   rail.innerHTML = `
     <button class="rail-btn tapable" data-r="back" aria-label="back">${ICONS.back}</button>
@@ -100,7 +112,8 @@ export function createPlayUI(app) {
   }
 
   function teardown() {
-    layer.classList.remove('needs-tap');
+    layer.classList.remove('needs-tap', 'controls-hidden');
+    autoHide.setPlaying(false);
     document.getElementById('kc-yt').style.visibility = '';
     if (!ctx) return;
     clearTimeout(ctx.toyTimer); clearTimeout(ctx.stallTimer); clearTimeout(ctx.nightTimer);
@@ -134,7 +147,7 @@ export function createPlayUI(app) {
     setRail();
     if (from) { from.classList.add('launch'); setTimeout(() => from.classList.remove('launch'), 400); }
 
-    const s = app.player.play(item, { startAt });
+    const s = app.player.play(item, { startAt, youtubeHost: youtubeHostFor(app.settings) });   // the switch applies from the next play
     ctx.session = s;
     app.playing = true;
     if (item.kind === 'audio') { cover.innerHTML = `<div class="cover-art" data-cat="${cat}"><img src="${item.artwork || data.title.poster || ''}" alt="" onerror="this.remove()"></div>`; setupMedia(item, data); wake(true); }
@@ -147,11 +160,11 @@ export function createPlayUI(app) {
     const my = ctx;
     const on = (type, fn) => s.addEventListener(type, (e) => { if (ctx === my) fn(e.detail || {}); });
     on('progress', (d) => { my.lastProgress = d.fraction; my.toy?.setProgress(d.fraction); });
-    on('ready', () => { if (my.item.kind === 'torbox') app.torboxKeyProven = true; onReady(my); });   // proof the TorBox key works this session
+    on('ready', () => { if (my.item.kind === 'torbox') app.torboxKeyProven = true; autoHide.setPlaying(true); onReady(my); });   // proof the TorBox key works this session
     on('time', (d) => onTime(my, d));
-    on('paused', () => onPaused(my));
-    on('stalled', () => { clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => stallEl.classList.add('open'), 1000); });
-    on('resumed', () => { clearTimeout(my.stallTimer); stallEl.classList.remove('open'); if (my.paused) { my.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); } });
+    on('paused', () => { autoHide.setPlaying(false); onPaused(my); });
+    on('stalled', () => { autoHide.setPlaying(false); clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => stallEl.classList.add('open'), 1000); });
+    on('resumed', () => { autoHide.setPlaying(true); clearTimeout(my.stallTimer); stallEl.classList.remove('open'); if (my.paused) { my.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); } });
     on('ended', () => onEnded(my));
     on('needs-tap', async () => {
       clearTimeout(my.toyTimer);
@@ -229,6 +242,7 @@ export function createPlayUI(app) {
 
   function onPaused(c) {
     c.paused = true;
+    autoHide.setPlaying(false);   // paused: the controls come back and stay
     setRail();
     if (c.item.kind === 'audio') return;            // a story shows its cover; the rail's play button resumes
     if (c.item.kind === 'youtube') document.getElementById('kc-yt').style.visibility = 'hidden';
@@ -243,7 +257,7 @@ export function createPlayUI(app) {
   }
 
   function doPause() { if (!ctx) return; ctx.session.pause(); if (!ctx.paused) onPaused(ctx); saveProgress(); app.saveUsage(); }
-  function doResume() { if (!ctx) return; ctx.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); ctx.session.resume(); }
+  function doResume() { if (!ctx) return; autoHide.setPlaying(true); ctx.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); ctx.session.resume(); }
 
   pauseEl.addEventListener('click', (e) => {
     if (e.target.closest('.pause-play')) { app.effect('button'); doResume(); return; }
@@ -251,6 +265,7 @@ export function createPlayUI(app) {
     if (t && ctx) { app.effect('poster'); const c = ctx; saveProgress(); logPlay({ endReason: 'switched' }); start({ data: c.data, videos: c.videos, index: +t.dataset.i, from: t }); }
   });
 
+  rail.addEventListener('pointerdown', () => autoHide.interact());   // touching a control keeps them up
   rail.addEventListener('click', (e) => {
     const b = e.target.closest('[data-r]');
     if (!b || !ctx || b.disabled) return;

@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS = {
   pinned: [],                // title ids pinned to My shows
   newRow: [],                // titles a parent put in New: {id, type, name, poster, posterShape}
   workerUrl: 'https://resolver.kidscorner-app.workers.dev',
+  youtubeSignIn: false,      // off: youtube-nocookie; on: youtube.com so his Premium sign-in can apply
 };
 
 const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });

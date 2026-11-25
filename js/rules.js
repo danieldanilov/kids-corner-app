@@ -133,6 +133,9 @@ export function hiddenByFailure(failed, now = Date.now()) {
   return { titles, videos };
 }
 
+// YouTube host for the embed: youtube-nocookie unless the grown-up switched on his own sign-in (Premium).
+export const youtubeHostFor = (settings) => (settings && settings.youtubeSignIn ? 'youtube' : 'nocookie');
+
 // First run: home is never empty. Until she hearts a show (or a parent pins one), My shows holds the first
 // 8 titles of Kids Corner's curated Shows row, in catalog order.
 export const STARTER_COUNT = 8;

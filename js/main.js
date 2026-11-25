@@ -2,7 +2,7 @@
 // the grown-up gate and parent screen in parent.js.
 import { openStore } from './store.js';
 import { ALL_ROWS, loadCatalogs, homeCategories, languageOf, loadTitle, loadStream, defaultFetchJson } from './data.js';
-import { rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, needsHowMany, canStart, updateSeen } from './rules.js';
+import { rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, needsHowMany, canStart, updateSeen, youtubeHostFor } from './rules.js';
 import { guardConsole, secretValues, urlCarriesSecret } from './secrets.js';
 import { createSound } from './sound.js';
 import { createPlayback } from './playback.js';
@@ -151,6 +151,7 @@ async function boot() {
     workerUrl: app.settings.workerUrl,
     getSecrets: () => app.store.getSecrets(),
     lang: 'en', fake,
+    options: { youtubeHost: youtubeHostFor(app.settings) },
   });
   app.playui = createPlayUI(app);
 

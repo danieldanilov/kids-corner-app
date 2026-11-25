@@ -223,6 +223,21 @@ svg { display: block; }
 .pause-arrow .icon { width: 34px; height: 34px; }
 .pause-pom { position: absolute; left: 16px; bottom: 12px; width: 96px; height: 96px; }
 
+/* ---------- full-screen player (Daniel 2026-11-25 (2); flag kcPlayerV4 until spec v4) ---------- */
+#player.full #video-area { left: 0; top: 0; width: 100%; height: 100%; border-radius: 0; z-index: 1; }
+#player.full #kc-video { object-fit: contain; background: #000; }
+#player.full #rail { z-index: 3; background: rgba(0, 0, 0, .55); transition: opacity 300ms ease; }
+#player.full.controls-hidden #rail { opacity: 0; pointer-events: none; }
+#touch-catcher { position: absolute; inset: 0; display: none; }
+#player.full:not(.youtube) #touch-catcher { display: block; }
+#player.full .cover-art { background: var(--c); }
+@media (orientation: portrait) {
+  #player.full #rail { position: absolute; inset: 0; width: auto; height: auto; background: rgba(0, 0, 0, .45); pointer-events: none; }
+  #player.full #rail .rail-btn { pointer-events: auto; }
+  #player.full.controls-hidden #rail .rail-btn { pointer-events: none; }
+}
+[data-motion="reduced"] #player.full #rail { transition: none; }
+
 /* ---------- toy layer (the toys themselves are in toys.css) ---------- */
 #toy-layer { position: fixed; inset: 0; z-index: 20; display: none; background: var(--player-bg); }
 #toy-layer.open { display: block; animation: fade-in 200ms; }

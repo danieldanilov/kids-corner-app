@@ -24,19 +24,22 @@ export async function crawlEpisodes({ seriesIds, version, fetchJson, store, isBu
   if (!todo.length) { onProgress(all()); return all(); }
   const waitIdle = async () => { while (isBusy()) await new Promise(r => setTimeout(r, idlePollMs)); };
   let dirty = 0;
-  const worker = async () => {
-    while (todo.length) {
+  const failed = [];
+  const worker = async (queue) => {
+    while (queue.length) {
       await waitIdle();
-      const id = todo.shift();
+      const id = queue.shift();
+      if (!id) break;   // the other worker took the last show while this one waited for idle
       try {
-        const j = await fetchJson(`${CINEMETA}${id}.json`);
+        const j = await fetchJson(`${CINEMETA}${id}.json`, { cache: 'no-store' });   // kept once, as docs; the service worker skips it
         saved.series[id] = { at: now(), docs: toDocs(id, j.meta) };
         if (++dirty >= 10) { dirty = 0; await store.set(saved); }   // save as it goes, so a closed app keeps its progress
         onProgress(all());
-      } catch { /* this show is skipped until the next refresh */ }
+      } catch { if (queue === todo) failed.push(id); /* tried once more at the end; after that, at the next open */ }
     }
   };
-  await Promise.all(Array.from({ length: CRAWL_CONCURRENCY }, worker));
+  await Promise.all(Array.from({ length: CRAWL_CONCURRENCY }, () => worker(todo)));
+  if (failed.length) await Promise.all(Array.from({ length: CRAWL_CONCURRENCY }, () => worker(failed)));
   await store.set(saved);
   onProgress(all());
   return all();

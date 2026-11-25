@@ -2,6 +2,7 @@
 import { CATEGORIES, BEDTIME_ROWS, kindOf } from './data.js';
 import { keepWatching, myShows, isFinished, showsAllowed, starterShows, newTitles } from './rules.js';
 import { pom, CHIP_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
+import { groupResults } from './search.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const portrait = () => matchMedia('(orientation: portrait)').matches;
@@ -87,6 +88,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     <header class="home-top">
       <button class="pom-tile tapable" data-act="pom" aria-label="Pom">${pom(app.bedtime ? 'night' : 'day', 'breathe')}</button>
       ${chips.map(c => chipHtml(c, app)).join('')}
+      ${app.bedtime ? '' : `<button class="chip srch tapable" data-act="search" aria-label="Search"><span class="art">${ICONS.search}</span><span class="word">Search</span></button>`}
     </header>
     ${lockHtml()}${dots(app)}${app.preview ? '<span class="preview-tag" aria-hidden="true">preview</span>' : ''}
     <section class="rows">${rows.map(rowHtml).join('')}</section>`;
@@ -100,6 +102,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
       app.speak('ui.hi');
       setTimeout(() => { tile.innerHTML = pom(app.bedtime ? 'night' : 'day', 'breathe'); }, 900);
     } else if (act === 'cat') { app.effect('chip'); app.speak('cat.' + b.dataset.id); app.go('#/c/' + b.dataset.id); }
+    else if (act === 'search') { app.effect('chip'); renderSearch(view, app, { focus: true }); app.go('#/s'); }   // focus inside her tap: the keyboard opens
     else if (act === 'sign') { app.effect('sign'); app.speak(b.dataset.key); b.classList.remove('nod'); void b.offsetWidth; b.classList.add('nod'); }
     else if (act === 'rowpage') {
       app.effect('arrow');
@@ -119,6 +122,66 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     view.querySelector('.pom-tile')?.classList.add('yawn');
     app.speak('ui.bedtime');
   }
+}
+
+// ---------- search (spec 4.10) ----------
+// Kids Corner only: the index in main.js holds the catalogs' titles, channel videos, story episodes and series
+// episode names. Rendered once per visit; the query stays for the session. Called straight from the magnifier's
+// tap so the field can take focus inside that gesture (iPadOS opens the keyboard only then).
+export const SEARCH_DEBOUNCE_MS = 120;
+export function renderSearch(view, app, { focus = false } = {}) {
+  let input = view.querySelector('#sq');
+  if (!input) {
+    view.className = 'screen search';
+    view.innerHTML = `${homeBtn()}
+      <label class="sfield">${ICONS.search.replace('class="icon', 'class="icon mag')}<input id="sq" type="text" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Search Kids Corner"><button class="sclear tapable" data-act="clear" aria-label="Clear">${ICONS.clear}</button></label>
+      <div class="sres" id="sres"></div>`;
+    input = view.querySelector('#sq');
+    const res = view.querySelector('#sres');
+    let timer = null;
+    input.value = app.searchQuery || '';
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => runSearch(view, app), SEARCH_DEBOUNCE_MS); });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+    res.addEventListener('pointerdown', () => { if (document.activeElement === input) input.blur(); });   // more results show
+    view.onclick = (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      const act = b.dataset.act;
+      if (act === 'home') { app.effect('button'); app.go('#/'); }
+      else if (act === 'clear') { app.effect('button'); clearTimeout(timer); input.value = ''; runSearch(view, app); input.focus(); }
+      else if (act === 'title') { app.effect('poster'); app.go(`#/t/${b.dataset.type}/${b.dataset.id}`); }
+      else if (act === 'ep') { app.effect('poster'); app.playui.playVideo(b.dataset.type, b.dataset.id, b.dataset.vid, b); }
+    };
+    app.ensureSearchIndex?.();
+    runSearch(view, app);
+  }
+  if (focus) input.focus();
+}
+
+// Re-run the query in place (after a keystroke, or when more of the index arrives); keeps the scroll on a refresh.
+export function runSearch(view, app, { refresh = false } = {}) {
+  const input = view.querySelector('#sq'), res = view.querySelector('#sres');
+  if (!input || !res) return;
+  const q = input.value;
+  app.searchQuery = q;
+  view.querySelector('.sclear').classList.toggle('off', !q);
+  if (!q.trim()) { res.innerHTML = `<div class="sempty">${pom('day', 'breathe')}<span class="lens">${ICONS.search}</span></div>`; return; }
+  const metas = new Map();
+  for (const list of Object.values(app.catalogs)) for (const m of list || []) if (m?.id && !metas.has(m.id)) metas.set(m.id, m);
+  const groups = groupResults(app.search(q, { limit: Infinity, why: refresh ? 'refresh' : 'typed' }), { hidden: app.hidden(), metaOf: (id) => metas.get(id) || null });
+  const html = groups.map(g => `<div class="sgroup" data-type="${g.type}"><h3><span class="art">${CHIP_ART[g.cat]}</span>${g.label}</h3><div class="sgrid">${
+    g.items.map(({ hit, meta }) => hit.kind === 'title'
+      ? `<div class="sitem">${posterHtml(meta, app, { squareIn: true, data: `data-act="title" data-type="${esc(meta.type)}" data-id="${esc(meta.id)}"` })}</div>`
+      : `<div class="sitem">${posterHtml(meta, app, { squareIn: true, data: `data-act="ep" data-type="${esc(meta.type)}" data-id="${esc(meta.id)}" data-vid="${esc(hit.id)}"` }).replace(`aria-label="${esc(meta.name)}"`, `aria-label="${esc(meta.name + ': ' + hit.name)}"`)}<span class="epname">${esc(hit.name)}</span></div>`).join('')
+  }</div></div>`).join('');
+  const out = html || `<div class="sempty">${pom('day', 'breathe')}<span class="none">Nothing in Kids Corner matches</span></div>`;
+  if (refresh && res._html === out) return;                 // nothing new arrived for this query: leave the tiles alone
+  const top = res.scrollTop;
+  res.innerHTML = res._html = out;
+  res.scrollTop = refresh ? top : 0;
+  // Warm the shows behind the first episode tiles, so her tap starts the player at once.
+  const warm = new Set();
+  for (const g of groups) for (const { hit, meta } of g.items) if (hit.kind !== 'title' && warm.size < 8 && !warm.has(meta.id)) { warm.add(meta.id); app.title(meta.type, meta.id).catch(() => {}); }
 }
 
 // ---------- category ----------

@@ -6,10 +6,10 @@ import { rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, need
 import { guardConsole, secretValues, urlCarriesSecret } from './secrets.js';
 import { createSound } from './sound.js';
 import { createPlayback } from './playback.js';
-import { renderHome, renderCategory, renderTitle, renderRest, renderGoodnight, renderHowMany } from './views.js';
+import { renderHome, renderCategory, renderTitle, renderRest, renderGoodnight, renderHowMany, renderSearch, runSearch } from './views.js';
 import { createPlayUI } from './playui.js';
 import { renderParent, openGate } from './parent.js';
-import { buildIndex, search as searchIndex, loadSearchDocs } from './search.js';
+import { buildIndex, search as searchIndex, loadSearchDocs, docsFromCatalogs } from './search.js';
 import { crawlEpisodes } from './episodes-index.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -100,6 +100,10 @@ async function render() {
   if (token !== renderToken) return;
   if (parts[0] === 'c' && parts[1]) return renderCategory(view, app, parts[1]);
   if (parts[0] === 't' && parts[1] && parts[2]) return renderTitle(view, app, parts[1], parts[2]);
+  if (parts[0] === 's') {
+    if (!app.bedtime) return renderSearch(view, app);      // already open (the magnifier's tap, or back from the player): kept as it is
+    history.replaceState(null, '', '#/');                   // search is hidden in bedtime (spec 4.10)
+  }
   await renderHome(view, app, { announceBedtime: switched && app.bedtime });
   if (needsHowMany(u, app.settings) && !app.howManyAsked) { app.howManyAsked = true; renderHowMany(app); }
 }
@@ -211,32 +215,46 @@ async function boot() {
   scheduleSearchIndex();
 }
 
-// ---------- search index (the search screen comes with the Designer's spec) ----------
-// Titles, channel videos and story episodes load once the app has been idle a few seconds; series episode names
-// follow in the background, two shows at a time, paused whenever something plays or the app is in the background.
+// ---------- search index (spec 4.10) ----------
+// Titles, channel videos and story episodes load once the app has been idle a few seconds, or at once when she
+// opens search; series episode names follow in the background, two shows at a time, paused whenever something
+// plays or the app is in the background. An open search screen refreshes its results as more arrives.
 app.searchIndex = buildIndex([]);
 app.search = (q, opts) => searchIndex(app.searchIndex, q, opts);
+let indexStarted = false, indexTimer = null;
+function setIndex(docs) {
+  app.searchIndex = buildIndex(docs);
+  const view = $('#view');
+  if (view.querySelector('#sq')?.value.trim()) runSearch(view, app, { refresh: true });
+}
+async function loadIndex() {
+  if (indexStarted) return;
+  if (app.playing || document.hidden) { indexTimer = setTimeout(() => loadIndex().catch(() => {}), 5000); return; }
+  indexStarted = true; clearTimeout(indexTimer);
+  const docs = await loadSearchDocs(app.catalogs, { fetchJson: defaultFetchJson, isBusy: () => app.playing || document.hidden });
+  setIndex(docs);
+  const version = (await defaultFetchJson('https://danieldanilov.github.io/kids-stremio-catalog/manifest.json').catch(() => ({}))).version || 'unknown';
+  const seriesIds = [...new Set(Object.entries(app.catalogs).filter(([k]) => k.startsWith('series/')).flatMap(([, list]) => (list || []).map(m => m.id)))];
+  let pending = null, rebuildTimer = null;
+  const rebuild = () => { rebuildTimer = null; if (pending) { setIndex([...docs, ...pending]); pending = null; } };
+  await crawlEpisodes({
+    seriesIds, version, fetchJson: defaultFetchJson,
+    store: { get: () => app.store.getKV('episodeIndex'), set: (v) => app.store.setKV('episodeIndex', v) },
+    isBusy: () => app.playing || document.hidden,
+    onProgress: (eps) => { pending = eps; if (!rebuildTimer) rebuildTimer = setTimeout(rebuild, 3000); },   // rebuild at most every 3 s
+  });
+  clearTimeout(rebuildTimer); rebuild();
+  app.searchReady = true;
+}
 function scheduleSearchIndex() {
   let delay = 8000;
   try { delay = +localStorage.getItem('kcIndexDelay') || delay; } catch { /* default */ }
-  const start = async () => {
-    if (app.playing || document.hidden) { setTimeout(start, 5000); return; }
-    const docs = await loadSearchDocs(app.catalogs, { fetchJson: defaultFetchJson });
-    app.searchIndex = buildIndex(docs);
-    const version = (await defaultFetchJson('https://danieldanilov.github.io/kids-stremio-catalog/manifest.json').catch(() => ({}))).version || 'unknown';
-    const seriesIds = [...new Set(Object.entries(app.catalogs).filter(([k]) => k.startsWith('series/')).flatMap(([, list]) => (list || []).map(m => m.id)))];
-    let pending = null, rebuildTimer = null;
-    const rebuild = () => { rebuildTimer = null; if (pending) { app.searchIndex = buildIndex([...docs, ...pending]); pending = null; } };
-    await crawlEpisodes({
-      seriesIds, version, fetchJson: defaultFetchJson,
-      store: { get: () => app.store.getKV('episodeIndex'), set: (v) => app.store.setKV('episodeIndex', v) },
-      isBusy: () => app.playing || document.hidden,
-      onProgress: (eps) => { pending = eps; if (!rebuildTimer) rebuildTimer = setTimeout(rebuild, 3000); },   // rebuild at most every 3 s
-    });
-    clearTimeout(rebuildTimer); rebuild();
-    app.searchReady = true;
-  };
-  setTimeout(() => { start().catch(() => {}); }, delay);
+  indexTimer = setTimeout(() => loadIndex().catch(() => {}), delay);
 }
+// Opening search: titles answer at once from the catalogs already in memory, and the full load starts now.
+app.ensureSearchIndex = () => {
+  if (!app.searchIndex.length) app.searchIndex = buildIndex(docsFromCatalogs(app.catalogs));
+  if (!indexStarted) loadIndex().catch(() => {});
+};
 
 boot();

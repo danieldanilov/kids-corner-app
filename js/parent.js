@@ -1,6 +1,7 @@
 // Grown-up gate (hold the corner lock 3 s, then a PIN) and the parent screen (spec 6).
 import { HOLD_MS, validPinFormat, makePinRecord, checkPin, registerAttempt, attemptState } from './gate.js';
 import { normaliseTorrentioConfig } from './secrets.js';
+import { checkConnection } from './connection.js';
 import { setSecretList } from './main.js';
 import { CATEGORIES } from './data.js';
 import { todayKey } from './rules.js';
@@ -25,14 +26,15 @@ export function openGate(app, lockEl) {
   window.addEventListener('pointerup', early); window.addEventListener('pointercancel', early);
 }
 
-async function showPin(app) {
+// change: true asks for a new PIN twice; the old PIN stays in force until the new one is confirmed and saved.
+async function showPin(app, { change = false } = {}) {
   const layer = document.getElementById('overlay');
   const rec = await app.store.getPin();
-  const setting = !rec;
+  const setting = change || !rec;
   let first = null, entry = '';
   layer.innerHTML = `<div class="gate">
     <button class="round-btn gate-home tapable" aria-label="back">${ICONS.back}</button>
-    <div class="pin-card"><p class="pin-title">${setting ? 'Choose a 4-digit grown-up PIN' : 'Grown-ups'}</p>
+    <div class="pin-card"><p class="pin-title">${change ? 'Choose a new 4-digit PIN' : setting ? 'Choose a 4-digit grown-up PIN' : 'Grown-ups'}</p>
       <div class="pin-dots">${'<span></span>'.repeat(4)}</div><p class="pin-msg" aria-live="polite"></p>
       <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map(k => k === '' ? '<span></span>' : `<button class="key" data-k="${k}">${k}</button>`).join('')}</div></div></div>`;
   layer.classList.add('open');
@@ -59,8 +61,8 @@ async function showPin(app) {
     if (setting) {
       if (!first) { first = pin; entry = ''; paint(); msg.textContent = 'Once more to confirm'; return; }
       if (first !== pin || !validPinFormat(pin)) { first = null; entry = ''; paint(); shake(); msg.textContent = "They didn't match. Choose again."; return; }
-      await app.store.savePin(await makePinRecord(pin));
-      close(); app.parentOpen = true; app.go('#/grownups'); return;
+      await app.store.savePin(await makePinRecord(pin));   // the only place a PIN is ever replaced
+      close(); app.parentOpen = true; app.go('#/grownups'); app.render(); return;
     }
     const ok = await checkPin(pin, rec);
     state = registerAttempt(state, ok, Date.now());
@@ -78,8 +80,26 @@ const fmtMB = (b) => b ? (b / 1e6).toFixed(0) + ' MB' : '–';
 const fmtS = (ms) => ms != null ? (ms / 1000).toFixed(1) + ' s' : '–';
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+// The testbed (same origin, database kc-testbed) may already hold the link and token. Read it without creating it.
+function readTestbedSettings() {
+  return new Promise((res) => {
+    let r;
+    try { r = indexedDB.open('kc-testbed'); } catch { res(null); return; }
+    r.onupgradeneeded = () => { r.transaction.abort(); };          // no testbed here: don't create one
+    r.onerror = () => res(null);
+    r.onsuccess = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('kv')) { db.close(); res(null); return; }
+      const g = db.transaction('kv').objectStore('kv').get('settings');
+      g.onsuccess = () => { db.close(); const v = g.result; res(v && v.torrentioConfig && v.appToken ? v : null); };
+      g.onerror = () => { db.close(); res(null); };
+    };
+  });
+}
+
 export async function renderParent(view, app) {
   const s = app.settings;
+  app.testbedSettings = !!(await readTestbedSettings());
   const secrets = await app.store.getSecrets();
   const plays = await app.store.allPlays();
   const u = app.today();
@@ -117,7 +137,9 @@ export async function renderParent(view, app) {
 
     <section><h2>Bedtime</h2>
       <div class="field"><span>Bedtime now</span>${sw('bedtime.manual', s.bedtime.manual)}</div>
-      <div class="field"><span>Every day from</span><input type="time" data-input="bedtime.start" value="${esc(s.bedtime.start)}"> <span>to</span> <input type="time" data-input="bedtime.end" value="${esc(s.bedtime.end)}">${s.bedtime.start || s.bedtime.end ? '<button class="btn small" data-a="clear-window">No window</button>' : ''}</div>
+      ${s.bedtime.start || s.bedtime.end
+        ? `<div class="field"><span>Every day from</span><input type="time" data-input="bedtime.start" value="${esc(s.bedtime.start)}"> <span>to</span> <input type="time" data-input="bedtime.end" value="${esc(s.bedtime.end)}"><button class="btn small" data-a="clear-window">No window</button></div>`
+        : '<div class="field"><span>Every day</span><b class="muted" data-window="none">Not set</b><button class="btn small" data-a="set-window">Set times</button></div>'}
       <div class="field"><span>One story, then good night</span>${sw('bedtime.oneStory', s.bedtime.oneStory)}</div>
       ${u.goodnight ? '<div class="field"><span>She is on the good night screen</span><button class="btn" data-a="wake">Wake the app</button></div>' : ''}
       <p class="hint">Bedtime switches only between videos, never in the middle of one.</p>
@@ -150,11 +172,20 @@ export async function renderParent(view, app) {
     </section>
 
     <section><h2>Connection</h2>
+      <ol class="setup">
+        <li>Set this up from the Kids Corner icon on the Home Screen, not in a Safari tab: the icon keeps its own storage, so settings made in Safari don't carry over.</li>
+        <li><b>Torrentio link:</b> on torrentio.strem.fun/configure, choose TorBox, paste your TorBox key, install, and copy the manifest link it gives you. Tap Set below and paste it.</li>
+        <li><b>App token:</b> on the Mac, run <code>security find-generic-password -s kidscorner-app-token -w | pbcopy</code>, then paste on the iPad (Universal Clipboard) with Set below.</li>
+        <li>Tap Check connection.</li>
+      </ol>
+      ${app.testbedSettings && (!secrets.torrentioConfig || !secrets.appToken) ? '<div class="field notice"><span>The testbed on this iPad already has a Torrentio link and an app token.</span><button class="btn primary" data-a="import-testbed">Use the testbed\'s settings</button></div>' : ''}
       <div class="field"><span>Torrentio config (holds the TorBox key)</span><b class="${secrets.torrentioConfig ? 'ok' : 'warn'}">${secrets.torrentioConfig ? 'Set' : 'Not set'}</b><button class="btn" data-a="set-config">Set</button>${secrets.torrentioConfig ? '<button class="btn" data-a="clear-config">Clear</button>' : ''}</div>
       <div class="field"><span>App token</span><b class="${secrets.appToken ? 'ok' : 'warn'}">${secrets.appToken ? 'Set' : 'Not set'}</b><button class="btn" data-a="set-token">Set</button>${secrets.appToken ? '<button class="btn" data-a="clear-token">Clear</button>' : ''}</div>
       <div class="secret-entry" hidden><input type="password" autocomplete="off" autocapitalize="off" spellcheck="false" class="wide" data-secret><button class="btn primary" data-a="save-secret">Save</button><button class="btn" data-a="cancel-secret">Cancel</button><p class="pin-msg" data-secret-msg></p></div>
+      <div class="field"><button class="btn primary" data-a="check-connection">Check connection</button><span class="hint" data-check-status></span></div>
+      <ul class="plain check-steps" data-check-steps></ul>
       <div class="field"><span>Resolver address</span><input type="url" class="wide" data-input="workerUrl" value="${esc(s.workerUrl)}"></div>
-      <p class="hint">Player: ${esc(app.player.source)}. These stay on this iPad only, in this Home Screen app's storage. Paste the Torrentio manifest link from torrentio.strem.fun/configure.</p>
+      <p class="hint">Player: ${esc(app.player.source)}. The link and the token stay on this iPad only, in this Home Screen app's storage, and are never shown again after saving.</p>
     </section>
 
     <section><h2>Missing voice clips</h2>
@@ -231,6 +262,7 @@ export async function renderParent(view, app) {
       case 'lock': app.parentOpen = false; app.go('#/'); return;
       case 'sample-name': app.sound.unlock(); app.speak('ui.hi'); return;
       case 'sample-effect': app.sound.unlock(); app.effect('chip'); return;
+      case 'set-window': { const n = structuredClone(app.settings); n.bedtime.start = '19:30'; n.bedtime.end = '07:00'; await app.saveSettings(n); return rerender(); }
       case 'clear-window': { const n = structuredClone(app.settings); n.bedtime.start = ''; n.bedtime.end = ''; await app.saveSettings(n); return rerender(); }
       case 'wake': app.usage = { ...app.today(), goodnight: false }; await app.saveUsage(); app._saidGoodnight = false; return rerender();
       case 'more-show': app.usage = { ...app.today(), extraShows: (app.today().extraShows || 0) + 1 }; await app.saveUsage(); return rerender();
@@ -272,7 +304,25 @@ export async function renderParent(view, app) {
         const next = { ...cur, [a === 'clear-config' ? 'torrentioConfig' : 'appToken']: '' };
         await app.store.saveSecrets(next); setSecretList(next); return rerender();
       }
-      case 'change-pin': await app.store.savePin(null); app.parentOpen = false; app.go('#/'); setTimeout(() => showPin(app), 50); return;
+      case 'import-testbed': {
+        const t = await readTestbedSettings();
+        const cfg = t && normaliseTorrentioConfig(t.torrentioConfig);
+        if (!cfg || !t.appToken || t.appToken.length < 16) { btn.textContent = "The testbed's settings aren't complete"; return; }
+        const next = { torrentioConfig: cfg, appToken: t.appToken };
+        await app.store.saveSecrets(next); setSecretList(next); app.setupHint = null;
+        return rerender();
+      }
+      case 'check-connection': {
+        const status = view.querySelector('[data-check-status]'), list = view.querySelector('[data-check-steps]');
+        btn.disabled = true; status.textContent = 'Checking…'; list.innerHTML = '';
+        const r = await checkConnection({ secrets: await app.store.getSecrets(), workerUrl: app.settings.workerUrl });
+        btn.disabled = false;
+        status.textContent = r.message; status.className = r.ok ? 'ok' : 'warn';
+        list.innerHTML = r.steps.map(st => `<li class="${st.ok ? 'ok' : 'warn'}">${st.ok ? '✓' : '✗'} ${esc(st.text)}</li>`).join('');
+        if (r.ok) app.setupHint = null;
+        return;
+      }
+      case 'change-pin': showPin(app, { change: true }); return;   // backing out keeps the old PIN
     }
   };
 }

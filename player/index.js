@@ -3,7 +3,7 @@
 
 import { rankStreams } from './select.js';
 import { decide } from './probe.js';
-import { fetchStreams, fetchCinemeta, resolveViaWorker, scrubSecrets } from './sources.js';
+import { fetchStreams, fetchCinemeta, resolveViaWorker, scrubSecrets, listOutcome } from './sources.js';
 import { createMseSink, isTypeSupported, mediaSourceClass } from './mse.js';
 import { createYouTubeHost, YT_STATE } from './youtube.js';
 import { createLearned } from './learned.js';
@@ -113,9 +113,12 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         it.runtimeMin ||= m.runtimeMin; it.year ||= m.year; it.seasonCount ||= m.seasonCount; it.episodeName ||= m.episodeName;
       } catch { /* keep: the guards then treat the unknowns strictly */ }
     }
-    const streams = await fetchStreams(secrets.torrentioConfig, it);
+    let streams;
+    try { streams = await fetchStreams(secrets.torrentioConfig, it); } catch (error) {
+      return { it, ranked: [], skipped: {}, outcome: listOutcome({ error }) };
+    }
     const { ranked, skipped } = rankStreams(streams, it, caps(), learned.snapshot());
-    return { it, ranked, skipped };
+    return { it, ranked, skipped, outcome: listOutcome({ streams, ranked, skipped }) };
   }
 
   function makeTry(it, secrets, rep, emit) {
@@ -515,9 +518,9 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
           rep.skipped = w.skipped; rep.prefetched = true;
           return runFrom(w.win.nextIdx, startAt, w.win, startAt <= 0.5 ? w.segments : null);
         }
-        const { it, ranked, skipped } = await listCandidates(item, secrets, emit);
+        const { it, ranked, skipped, outcome } = await listCandidates(item, secrets, emit);
         state.it = it; state.ranked = ranked; rep.skipped = skipped;
-        if (!ranked.length) { rep.failures.push('no_candidates'); return finish('failed-all', ['no_candidates']); }
+        if (outcome) { rep.failures.push(outcome); return finish('failed-all', [outcome]); }
         await runFrom(0, startAt);
       } catch (e) {
         rep.failures.push(scrubSecrets(e?.message));

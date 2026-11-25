@@ -147,7 +147,7 @@ export function createPlayUI(app) {
     const my = ctx;
     const on = (type, fn) => s.addEventListener(type, (e) => { if (ctx === my) fn(e.detail || {}); });
     on('progress', (d) => { my.lastProgress = d.fraction; my.toy?.setProgress(d.fraction); });
-    on('ready', () => onReady(my));
+    on('ready', () => { if (my.item.kind === 'torbox') app.torboxKeyProven = true; onReady(my); });   // proof the TorBox key works this session
     on('time', (d) => onTime(my, d));
     on('paused', () => onPaused(my));
     on('stalled', () => { clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => stallEl.classList.add('open'), 1000); });
@@ -317,10 +317,11 @@ export function createPlayUI(app) {
   async function fail(reasons, c) {
     if (c.failed) return;
     c.failed = true;
-    const setup = reasons.some(isSetupReason);
-    if (setup) app.setupHint = reasons.find(isSetupReason);
+    const keyProven = !!app.torboxKeyProven;
+    const setup = reasons.some(r => isSetupReason(r, { keyProven }));
+    if (setup) app.setupHint = reasons.find(r => isSetupReason(r, { keyProven }));
     else {
-      app.failed = recordFailure(app.failed, { titleId: c.data.title.id, videoId: c.item.videoId, type: c.data.title.type }, reasons);
+      app.failed = recordFailure(app.failed, { titleId: c.data.title.id, videoId: c.item.videoId, type: c.data.title.type }, reasons, Date.now(), { keyProven });
       await app.store.saveFailed(app.failed);
     }
     logPlay({ endReason: 'failed', failures: reasons }, c);

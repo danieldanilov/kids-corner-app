@@ -111,10 +111,13 @@ export const FAIL_TTL_MS = 7 * 86400000;
 export const SERIES_FAILS_TO_HIDE = 3;
 // Setup problems (no config, a rejected token or origin), an app bug, or a network blip: never the title's fault.
 export const SETUP_RE = /^(not-configured|unauthorized|misconfigured|forbidden|no-player|app_token|torbox_auth|no_secrets|origin|bad_item|unexpected_host)$|^(cache_check|list|torrentio|setup)_|_auth$|^yt_153|network|fetch|load failed|timed? ?out|offline|abort/i;
-export const isSetupReason = (r) => SETUP_RE.test(String(r));
+// none_cached (streams, but not one ready on TorBox) is also exactly what a wrong TorBox key looks like, so it
+// counts against the title only once another TorBox title has played this session (keyProven); before that it's
+// a grown-up hint (Boss ruling).
+export const isSetupReason = (r, { keyProven = false } = {}) => SETUP_RE.test(String(r)) || (String(r) === 'none_cached' && !keyProven);
 
-export function recordFailure(failed, item, reasons = [], now = Date.now()) {
-  if (reasons.some(isSetupReason)) return failed;
+export function recordFailure(failed, item, reasons = [], now = Date.now(), { keyProven = false } = {}) {
+  if (reasons.some(r => isSetupReason(r, { keyProven }))) return failed;
   const cur = failed[item.titleId] || { type: item.type, videos: {} };
   return { ...failed, [item.titleId]: { ...cur, videos: { ...cur.videos, [item.videoId]: now } } };
 }

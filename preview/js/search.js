@@ -69,34 +69,39 @@ const formsOf = (d) => {
 };
 export function buildIndex(docs) {
   const index = docs.map(d => ({ ...d, ...formsOf(d) }));
-  const vocab = new Map();
+  const vocab = new Map(), own = new Map();
+  const add = (map, w, i) => { let list = map.get(w); if (!list) map.set(w, list = []); if (list[list.length - 1] !== i) list.push(i); };
   index.forEach((e, i) => {
-    for (const { words } of [...e.f, ...e.pf]) for (const w of words) {
-      let list = vocab.get(w);
-      if (!list) vocab.set(w, list = []);
-      if (list[list.length - 1] !== i) list.push(i);
-    }
+    for (const { words } of e.f) for (const w of words) { add(vocab, w, i); add(own, w, i); }
+    for (const { words } of e.pf) for (const w of words) add(vocab, w, i);
   });
   Object.defineProperty(index, 'vocab', { value: vocab, enumerable: false });
+  Object.defineProperty(index, 'own', { value: own, enumerable: false });   // own-name words only
   return index;
 }
 
-// Entries in which every query word matches some word (own or show's), by the given word test.
+// Entries in which every query word matches some word (own or show's), by the given word test. An episode or
+// video also needs at least one query word in its own name (review app-v4 S1): the show's name alone lists the
+// show's own tile, not every episode.
 function everyWord(index, qw, test) {
-  const n = index.length, count = new Uint16Array(n);
-  qw.forEach((w, k) => {
+  const n = index.length, count = new Uint16Array(n), ownHit = new Uint8Array(n);
+  const words = qw.map(w => [...index.vocab.keys()].filter(t => test(w, t)));
+  words.forEach((ts, k) => {
     const seen = new Uint8Array(n);
-    for (const [t, list] of index.vocab) if (test(w, t)) for (const i of list) if (!seen[i]) { seen[i] = 1; if (count[i] === k) count[i]++; }
+    for (const t of ts) {
+      for (const i of index.vocab.get(t)) if (!seen[i]) { seen[i] = 1; if (count[i] === k) count[i]++; }
+      for (const i of index.own.get(t) || []) ownHit[i] = 1;
+    }
   });
   const out = [];
-  for (let i = 0; i < n; i++) if (count[i] === qw.length) out.push(i);
+  for (let i = 0; i < n; i++) if (count[i] === qw.length && (ownHit[i] || !index[i].pf.length)) out.push(i);
   return out;
 }
 
 // Tiers (spec v5): 100 the whole name starts with the query; 80 every query word starts a word (for episodes and
 // videos, of the episode or of its show, so "bluey xylophone" works); 60 the query inside the name (3+ characters);
 // 40 typo matches (3+ characters). One or two characters need 80 or more. Then titles before episodes, shorter first.
-export function search(index, query, { limit = 200 } = {}) {
+export function search(index, query, { limit = Infinity } = {}) {
   const q0 = normalize(query);
   if (!q0) return [];
   if (!index.vocab) index = buildIndex(index);
@@ -168,6 +173,7 @@ export const SEARCH_GROUPS = [
 export function groupResults(hits, { hidden, metaOf, perGroup = 30 }) {
   const groups = SEARCH_GROUPS.map(g => ({ ...g, items: [] }));
   const byType = Object.fromEntries(groups.map(g => [g.type, g]));
+  const seen = new Set();   // one tile per name within a show or channel (review app-v4 S2)
   for (const hit of hits) {
     const g = byType[hit.type];
     if (!g || g.items.length >= perGroup) continue;
@@ -175,6 +181,7 @@ export function groupResults(hits, { hidden, metaOf, perGroup = 30 }) {
     if (!titleId || hidden.titles.has(titleId) || hidden.videos.has(hit.id)) continue;
     const meta = metaOf(titleId) || (hit.kind === 'title' ? hit : null);
     if (!meta) continue;
+    if (hit.kind !== 'title') { const key = titleId + '\u0000' + normalize(hit.name); if (seen.has(key)) continue; seen.add(key); }
     g.items.push({ hit, meta });
   }
   return groups.filter(g => g.items.length);

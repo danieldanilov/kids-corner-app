@@ -213,29 +213,31 @@ svg { display: block; }
 .rail-btn { position: absolute; width: 120px; height: 120px; border-radius: 50%; background: #fff; color: #2B2541; display: grid; place-items: center; box-shadow: 0 6px 0 rgba(0, 0, 0, .55); }
 .rail-btn.pressed { box-shadow: 0 2px 0 rgba(0, 0, 0, .55); }
 .rail-btn .icon { width: 60px; height: 60px; }
-.rail-btn[data-r="back"] { left: 32px; top: 24px; }
-.rail-btn[data-r="next"] { left: 1042px; top: 24px; }
-.rail-btn[data-r="back15"] { left: 357px; top: 357px; }
-.rail-btn[data-r="toggle"] { left: 517px; top: 337px; width: 160px; height: 160px; }
+/* Anchored to the viewport (Daniel 2026-11-25 (4)): corners keep the gutter and the safe area; the middle row sits
+   on the true centre (160 play, 120 skips, 40 px apart). At 1194x834 and 834x1194 this is exactly spec v4. */
+.rail-btn[data-r="back"] { left: calc(var(--gutter) + env(safe-area-inset-left, 0px)); top: max(24px, env(safe-area-inset-top, 0px)); }
+.rail-btn[data-r="next"] { right: calc(var(--gutter) + env(safe-area-inset-right, 0px)); top: max(24px, env(safe-area-inset-top, 0px)); }
+.rail-btn[data-r="back15"] { left: calc(50% - 240px); top: calc(50% - 60px); }
+.rail-btn[data-r="toggle"] { left: calc(50% - 80px); top: calc(50% - 80px); width: 160px; height: 160px; }
 .rail-btn[data-r="toggle"] .icon { width: 80px; height: 80px; }
-.rail-btn[data-r="fwd15"] { left: 717px; top: 357px; }
+.rail-btn[data-r="fwd15"] { left: calc(50% + 120px); top: calc(50% - 60px); }
 .rail-btn.inert { opacity: .35; pointer-events: none; }
 .rail-dots { display: none; }
 /* Paused (4.6): the previous and next pictures bottom-left and bottom-right, Pom small between them. */
 .pause-tiles, .pause-pom, .stall-pom { display: none; }
 #player.paused .pause-tiles, #player.paused .pause-pom { display: block; }
-.pause-tile { position: absolute; top: 557px; width: 240px; height: 135px; border-radius: 18px; overflow: visible; background: var(--c, #555); box-shadow: 0 6px 0 rgba(0, 0, 0, .55); }
-.pause-tile[data-dir="previous"] { left: 32px; }
-.pause-tile[data-dir="next"] { left: 922px; }
+.pause-tile { position: absolute; bottom: calc(142px + env(safe-area-inset-bottom, 0px)); width: 240px; height: 135px; border-radius: 18px; overflow: visible; background: var(--c, #555); box-shadow: 0 6px 0 rgba(0, 0, 0, .55); }
+.pause-tile[data-dir="previous"] { left: calc(var(--gutter) + env(safe-area-inset-left, 0px)); }
+.pause-tile[data-dir="next"] { right: calc(var(--gutter) + env(safe-area-inset-right, 0px)); }
 .pause-tile img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: cover; border-radius: 15px; }
 .pause-tile .fallback { position: absolute; inset: 0; display: grid; place-items: center; }
 .pause-tile .fallback svg { width: 30%; }
 .pause-arrow { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); width: 52px; height: 52px; border-radius: 50%; background: #fff; color: #2B2541; display: grid; place-items: center; box-shadow: 0 3px 0 rgba(0, 0, 0, .4); }
 .pause-arrow .icon { width: 30px; height: 30px; }
-.pause-pom { position: absolute; left: 549px; top: 576px; width: 96px; height: 96px; pointer-events: none; }
+.pause-pom { position: absolute; left: calc(50% - 48px); bottom: calc(162px + env(safe-area-inset-bottom, 0px)); width: 96px; height: 96px; pointer-events: none; }
 /* Stalled (4.7): controls stay; Pom small bottom-right, 88 px above the bottom edge, breathing. */
 #player.stalled .stall-pom { display: block; animation: fade-in 400ms; }
-.stall-pom { position: absolute; right: 32px; bottom: 88px; width: 96px; height: 96px; pointer-events: none; }
+.stall-pom { position: absolute; right: calc(var(--gutter) + env(safe-area-inset-right, 0px)); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); width: 96px; height: 96px; pointer-events: none; }
 #stall { display: none; }
 /* YouTube's own start screen or an ad (4.8): the iframe uncovered between a 168 px top band and the bottom
    strip, only our back arrow, no scrim. */
@@ -361,14 +363,5 @@ table.report tr.bad td { color: #B4552F; }
   .movie-actions { justify-content: center; }
   .howmany { flex-direction: column; }
   .moon-asleep { margin-left: 120px; top: 120px; }
-  .rail-btn[data-r="back"] { left: 24px; top: 24px; }
-  .rail-btn[data-r="next"] { left: 690px; top: 24px; }
-  .rail-btn[data-r="back15"] { left: 177px; top: 537px; }
-  .rail-btn[data-r="toggle"] { left: 337px; top: 517px; }
-  .rail-btn[data-r="fwd15"] { left: 537px; top: 537px; }
-  .pause-tile { top: 917px; }
-  .pause-tile[data-dir="previous"] { left: 24px; }
-  .pause-tile[data-dir="next"] { left: 570px; }
-  .pause-pom { left: 369px; top: 936px; }
-  .stall-pom { right: 24px; }
+  /* player controls: anchored, so the portrait gutter (24 px) is all they need */
 }

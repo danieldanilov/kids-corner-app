@@ -5,6 +5,7 @@
   --lip: rgba(43,37,65,.16); --focus: #2B2541; --player-bg: #16131F;
   --c-shows: #7CC4F0; --l-shows: #4D97C6; --c-movies: #EE8FAB; --l-movies: #C76482;
   --c-bedtime: #8F91E4; --l-bedtime: #6466BA; --c-youtube: #FF9E7C; --l-youtube: #DE7658;
+  --c-music: #C9A3F2; --l-music: #9C74CC;
   --c-stories: #FFD064; --l-stories: #DDA634; --c-russian: #72D0AF; --l-russian: #41A684;
   --c-british: #A8D56E; --l-british: #78AA41;
   --pom: #A6E3C6; --pom-deep: #5FBF97; --pom-line: #3E8F70; --pom-cheek: #F59A9A;
@@ -17,6 +18,7 @@
   --lip: rgba(0,0,0,.35); --focus: #EDE8FF; --player-bg: #0B0B18;  /* bedtime, set by the app, never by the system */
   --c-shows: #3F6E9E; --l-shows: #2C5480; --c-movies: #8E4F6E; --l-movies: #6F3A55;
   --c-bedtime: #5557A8; --l-bedtime: #3F4189; --c-youtube: #9C5A4C; --l-youtube: #7A4337;
+  --c-music: #6E5596; --l-music: #543F77;
   --c-stories: #B08A3A; --l-stories: #8A6A26; --c-russian: #2F8068; --l-russian: #22604E;
   --c-british: #5E8233; --l-british: #476426;
   color-scheme: dark;
@@ -25,6 +27,7 @@
 [data-cat="movies"] { --c: var(--c-movies); --l: var(--l-movies); }
 [data-cat="bedtime"] { --c: var(--c-bedtime); --l: var(--l-bedtime); }
 [data-cat="youtube"] { --c: var(--c-youtube); --l: var(--l-youtube); }
+[data-cat="music"] { --c: var(--c-music); --l: var(--l-music); }
 [data-cat="stories"] { --c: var(--c-stories); --l: var(--l-stories); }
 [data-cat="russian"] { --c: var(--c-russian); --l: var(--l-russian); }
 [data-cat="british"] { --c: var(--c-british); --l: var(--l-british); }
@@ -84,8 +87,9 @@ svg { display: block; }
 .home-top { position: absolute; top: 24px; left: var(--gutter); display: flex; gap: 6px; }   /* spec 4.1 v5: Pom, 7 chips, search, 6 px gaps */
 .chip.srch { --c: #FFFFFF; --l: #D8CCB8; color: #2B2541; }
 .chip.srch .art svg { width: 64px; height: 64px; }
-.home .lock { top: 172px; right: 2px; width: 52px; height: 52px; }   /* in the free strip right of the rows, under search */
-.home .rows { right: 56px; }                                         /* rows end at x 1138 */
+.home-top .chip.srch { position: absolute; left: 1010px; top: 144px; }   /* spec 4.1 v6: (1042, 168), under the full header row */
+.home .lock { top: 312px; right: 32px; width: 52px; height: 52px; }   /* (1110, 312): under search, right-aligned with it */
+.home .rows { right: 168px; }                                         /* rows end at x 1026, leaving that column free */
 .pom-tile, .chip { width: 120px; height: 128px; border-radius: 28px; }
 .pom-tile { display: grid; place-items: center; }
 .pom-tile .pom { width: 112px; height: 112px; }
@@ -145,7 +149,7 @@ svg { display: block; }
 /* Nothing shows in a shelf's side gutters, so a page edge never leaves a sliver of the next or last column. */
 .cat-shelf { clip-path: inset(-12px var(--gutter) -12px var(--gutter)); }
 .ep-shelf { clip-path: inset(-12px var(--gutter) -12px 0); }
-.group-div { grid-row: 1 / -1; width: 64px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-family: 'Varela Round', var(--font); font-size: 26px; color: var(--ink-2); }
+.group-div { grid-row: 1 / -1; scroll-snap-align: start; width: 64px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-family: 'Varela Round', var(--font); font-size: 26px; color: var(--ink-2); }
 .cat-shelf { top: 168px; left: 0; right: 0; height: 576px; padding: 0 var(--gutter) 8px; scroll-padding-left: var(--gutter); grid-template-rows: repeat(2, 280px); grid-auto-columns: max-content; }
 .cat-shelf .poster { width: 187px; height: 280px; scroll-snap-align: start; }
 .cat-shelf .poster.square { width: 280px; }
@@ -174,7 +178,19 @@ svg { display: block; }
 .ep-check .icon { width: 36px; height: 36px; }
 .again-btn { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; background: var(--c); color: #FFF7EA; box-shadow: 0 6px 0 var(--l), 0 0 0 6px #FFF7EA; display: grid; place-items: center; }
 .again-btn .icon { width: 64px; height: 64px; }
-.season-div { grid-row: 1 / span 2; width: 56px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-size: 30px; color: var(--ink-2); }
+/* Music page (spec 4.11): divider columns and song thumbnails at the episode-tile size */
+.music-shelf { top: 168px; left: 0; right: 0; height: 500px; padding: 0 var(--gutter) 8px; scroll-padding-left: var(--gutter); grid-template-rows: repeat(2, 234px); grid-auto-columns: max-content; clip-path: inset(-12px var(--gutter) -12px var(--gutter)); }
+.mdiv { grid-row: 1 / -1; scroll-snap-align: start; width: 120px; border-radius: 22px; background: var(--paper-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 10px; text-align: center; color: var(--ink-2); font-size: 15px; line-height: 1.2; }
+.mdiv svg { width: 56px; height: 56px; }
+.song img { object-fit: cover; }
+/* Search: a song as a poster-shaped tile, the 16:9 thumbnail on top, the Music colour with a note below */
+.poster.songin { display: flex; flex-direction: column; background: var(--c); }
+.poster.songin .sart { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 19px 19px 0 0; }
+.poster.songin .sart img { inset: 3px 3px 0; width: calc(100% - 6px); height: calc(100% - 3px); object-fit: cover; border-radius: 19px 19px 0 0; }
+.poster.songin .sart .fallback svg { width: 40%; }
+.poster.songin .sqfoot { flex: 1; display: grid; place-items: center; }
+.poster.songin .sqfoot svg { width: 56px; height: 56px; }
+.season-div { grid-row: 1 / span 2; scroll-snap-align: start; width: 56px; border-radius: 22px; background: var(--paper-2); display: grid; place-items: center; font-size: 30px; color: var(--ink-2); }
 .pom-center { position: absolute; inset: 0; display: grid; place-items: center; }
 .pom-center .pom { width: 240px; height: 240px; }
 
@@ -360,10 +376,10 @@ table.report tr.bad td { color: #B4552F; }
   :root { --gutter: 24px; }
   .lock { top: 18px; right: 24px; }
   .show-dots { top: 84px; right: 26px; }
-  .home-top { top: 84px; right: var(--gutter); display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px 12px; }   /* 5 cells across 24-810, rows at y 84 and 228 */
+  .home-top { top: 84px; right: var(--gutter); display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }   /* 5 cells across 24-810, rows at y 84 and 224 */
   .home-top .pom-tile, .home-top .chip { width: auto; }
-  .home-top .chip.srch { grid-column: 5; }                         /* alone at the end of row 2 */
-  .home .lock { top: 18px; right: 24px; width: 56px; height: 56px; }
+  .home-top .chip.srch { position: static; }                       /* the last cell of row 2 */
+  .home .lock { top: 18px; right: 28px; width: 56px; height: 56px; }   /* (750, 18) */
   .home .rows { right: var(--gutter); }
   .sfield { left: 168px; }
   .sitem, .sitem .poster { width: 136px; }
@@ -385,6 +401,7 @@ table.report tr.bad td { color: #B4552F; }
   .ep-shelf { top: 432px; left: 0; height: 664px; padding: 0 var(--gutter) 8px; scroll-padding-left: var(--gutter); grid-template-rows: repeat(3, 208px); }
   .ep { width: 370px; height: 208px; }
   .season-div { grid-row: 1 / span 3; }
+  .music-shelf { height: 664px; grid-template-rows: repeat(3, 208px); }
   .ep-shelf { clip-path: inset(-12px var(--gutter) -12px var(--gutter)); }
   .title-page.movie .movie-body { left: 0; right: 0; flex-direction: column; align-items: center; gap: 22px; }
   .movie-side { padding: 0; text-align: center; }

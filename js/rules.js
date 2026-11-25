@@ -17,7 +17,7 @@ export function keepWatching(progress, { hidden = new Set(), max = KEEP_MAX } = 
     if (!cur || p.updatedAt > cur.updatedAt) latest.set(p.titleId, p);
   }
   return [...latest.values()]
-    .filter(p => !hidden.has(p.titleId) && !isFinished(p) && p.position >= MIN_START_S)
+    .filter(p => p.titleType !== 'Music' && !hidden.has(p.titleId) && !isFinished(p) && p.position >= MIN_START_S)   // songs are replayed whole
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, max);
 }
@@ -25,6 +25,8 @@ export function keepWatching(progress, { hidden = new Set(), max = KEEP_MAX } = 
 // Pinned by a parent first (in pin order), then her hearts in the order she added them.
 export function myShows(favs, pinned = [], hidden = new Set()) {
   const out = [];
+  const song = (id) => String(id).startsWith('kc.music.');   // songs never sit in My shows (they live on the Music page)
+  hidden = new Set([...hidden, ...pinned.filter(song), ...favs.map(f => f.id).filter(song)]);
   for (const id of pinned) if (!hidden.has(id) && !out.includes(id)) out.push(id);
   for (const f of [...favs].sort((a, b) => a.addedAt - b.addedAt)) if (!hidden.has(f.id) && !out.includes(f.id)) out.push(f.id);
   return out;

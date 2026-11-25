@@ -3,7 +3,7 @@ import { HOLD_MS, validPinFormat, makePinRecord, checkPin, registerAttempt, atte
 import { normaliseTorrentioConfig } from './secrets.js';
 import { checkConnection } from './connection.js';
 import { setSecretList } from './main.js';
-import { CATEGORIES } from './data.js';
+import { CATEGORIES, titleClipId } from './data.js';
 import { todayKey } from './rules.js';
 import { ICONS } from './art.js';
 
@@ -120,7 +120,7 @@ export async function renderParent(view, app) {
   const ends = {};
   for (const p of today) ends[p.endReason || 'unknown'] = (ends[p.endReason || 'unknown'] || 0) + 1;
 
-  const voiceMissing = allTitles.filter(t => !app.sound.hasTitle(t.id));
+  const voiceMissing = allTitles.filter(t => !app.sound.hasTitle(titleClipId(t.id)));
   const failedIds = [...hid.failedTitles];
 
   view.className = 'screen parent';
@@ -226,8 +226,8 @@ export async function renderParent(view, app) {
       const h = app.settings.hidden.includes(t.id), p = app.settings.pinned.includes(t.id), n = app.settings.newRow.some(x => x.id === t.id);
       return `<div class="title-row"><span>${esc(t.name)} <small>${esc(t.type)}</small></span>
         <button class="btn small" data-a="${h ? 'unhide' : 'hide'}" data-id="${esc(t.id)}">${h ? 'Unhide' : 'Hide'}</button>
-        <button class="btn small" data-a="${p ? 'unpin' : 'pin'}" data-id="${esc(t.id)}">${p ? 'Unpin' : 'Pin'}</button>
-        <button class="btn small" data-a="${n ? 'unnew' : 'new'}" data-id="${esc(t.id)}">${n ? 'Out of New' : 'Add to New'}</button></div>`;
+        ${t.type === 'Music' ? '' /* songs: Hide only; they live on the Music page, never in My shows or New */ : `<button class="btn small" data-a="${p ? 'unpin' : 'pin'}" data-id="${esc(t.id)}">${p ? 'Unpin' : 'Pin'}</button>
+        <button class="btn small" data-a="${n ? 'unnew' : 'new'}" data-id="${esc(t.id)}">${n ? 'Out of New' : 'Add to New'}</button>`}</div>`;
     }).join('') || '<p class="hint">No match.</p>';
   };
   filter.addEventListener('input', paintList);

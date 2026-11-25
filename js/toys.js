@@ -4,7 +4,7 @@
 // and handoff(done) for the match cut into the video playing underneath.
 import { pom } from './art.js';
 
-export const TOY_FOR = { shows: 'owl', movies: 'curtain', bedtime: 'moon', youtube: 'bubbles', stories: 'sunflower', russian: 'jelly', british: 'train' };
+export const TOY_FOR = { shows: 'owl', movies: 'curtain', bedtime: 'moon', youtube: 'bubbles', music: 'bubbles', stories: 'sunflower', russian: 'jelly', british: 'train' };
 export const toyFor = (cat, bedtime) => bedtime ? 'moon' : (TOY_FOR[cat] || 'owl');
 
 // Display value eases toward the reported value (max 0.6/s) and never moves backwards (spec 5.4).

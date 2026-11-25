@@ -1,7 +1,7 @@
 // Kids Corner app: boot, state, routing. Screens live in views.js, the player flow in playui.js,
 // the grown-up gate and parent screen in parent.js.
 import { openStore } from './store.js';
-import { ALL_ROWS, loadCatalogs, homeCategories, languageOf, loadTitle, loadStream, defaultFetchJson } from './data.js';
+import { ALL_ROWS, loadCatalogs, homeCategories, languageOf, loadTitle, loadStream, defaultFetchJson, titleOrder } from './data.js';
 import { rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, needsHowMany, canStart, updateSeen, youtubeHostFor } from './rules.js';
 import { guardConsole, secretValues, urlCarriesSecret } from './secrets.js';
 import { createSound } from './sound.js';
@@ -98,7 +98,9 @@ async function render() {
   if (app.settings.bedtime.oneStory && app.bedtime && u.goodnight) return renderGoodnight(view, app);
   if (!canStart(u, app.settings)) return renderRest(view, app);
   if (token !== renderToken) return;
-  if (parts[0] === 'c' && parts[1]) return renderCategory(view, app, parts[1]);
+  if (parts[0] === 'c' && parts[1] === 'music' && app.bedtime) history.replaceState(null, '', '#/');   // Music is hidden at bedtime (spec 4.11)
+  else if (parts[0] === 'c' && parts[1]) return renderCategory(view, app, parts[1]);
+  if (parts[0] === 't' && parts[1] === 'Music') { app.go(app.bedtime ? '#/' : '#/c/music'); return; }   // a song has no page of its own
   if (parts[0] === 't' && parts[1] && parts[2]) return renderTitle(view, app, parts[1], parts[2]);
   if (parts[0] === 's') {
     if (!app.bedtime) return renderSearch(view, app);      // already open (the magnifier's tap, or back from the player): kept as it is
@@ -202,7 +204,7 @@ async function boot() {
     app.home = { ...homeCategories(loaded), ...stored };
     if (Object.keys(app.home).length !== Object.keys(stored).length) await app.store.setKV('homeCats', app.home);
     // Which titles are new: the first run is the baseline; later arrivals keep their first-seen time.
-    app.catalogOrder = [...new Set(ALL_ROWS.flatMap(r => (loaded[`${r.type}/${r.id}`] || []).map(m => m.id)))];
+    app.catalogOrder = titleOrder(loaded);   // songs never count as new titles
     const seenBefore = await app.store.getKV('seen');
     if (app.catalogOrder.length) { app.seen = updateSeen(seenBefore, app.catalogOrder); await app.store.setKV('seen', app.seen); }
     else app.seen = seenBefore || {};

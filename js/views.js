@@ -88,7 +88,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
       <button class="pom-tile tapable" data-act="pom" aria-label="Pom">${pom(app.bedtime ? 'night' : 'day', 'breathe')}</button>
       ${chips.map(c => chipHtml(c, app)).join('')}
     </header>
-    ${lockHtml()}${dots(app)}
+    ${lockHtml()}${dots(app)}${app.preview ? '<span class="preview-tag" aria-hidden="true">preview</span>' : ''}
     <section class="rows">${rows.map(rowHtml).join('')}</section>`;
 
   view.onclick = (e) => {

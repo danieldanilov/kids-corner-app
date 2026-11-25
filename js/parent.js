@@ -125,7 +125,7 @@ export async function renderParent(view, app) {
 
   view.className = 'screen parent';
   view.innerHTML = `<div class="parent-wrap">
-    <header class="parent-top"><h1>Grown-ups</h1><button class="btn primary" data-a="done">Done</button></header>
+    <header class="parent-top"><h1>Grown-ups${app.preview ? ' <small class="muted">(preview: its own settings, not the live app\'s)</small>' : ''}</h1><button class="btn primary" data-a="done">Done</button></header>
     ${app.setupHint ? `<p class="notice">Playback needs attention: ${esc(app.setupHint === 'torbox_auth' ? 'TorBox rejected the key inside the Torrentio config' : app.setupHint === 'none_cached' ? 'nothing was ready on TorBox for the last title; if every title does this, check the TorBox key with Check connection' : app.setupHint === 'list_failed' ? 'Torrentio did not answer' : app.setupHint === 'list_empty' ? 'Torrentio returned no streams for the last title' : app.setupHint === 'app_token' || app.setupHint === 'origin' ? 'the resolver rejected the app token' : app.setupHint === 'no_secrets' || app.setupHint === 'not-configured' ? 'the Torrentio config or the app token is not set' : /network|fetch|load failed|time|offline|abort/i.test(app.setupHint) ? 'the last play hit a network problem' : app.setupHint === 'no-player' ? 'the player module is not installed yet (YouTube and stories still play)' : 'the TorBox connection is not set up')}. Check Connection below.</p>` : ''}
 
     <section><h2>Sounds</h2>

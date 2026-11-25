@@ -80,6 +80,7 @@ svg { display: block; }
 @keyframes ring-fill { to { --fill: 100%; } }
 
 /* ---------- home ---------- */
+.preview-tag { position: absolute; top: 84px; right: 22px; font-size: 11px; font-weight: 700; color: var(--ink-2); opacity: .7; pointer-events: none; }
 .home-top { position: absolute; top: 24px; left: var(--gutter); display: flex; gap: 12px; }
 .pom-tile, .chip { width: 120px; height: 128px; border-radius: 28px; }
 .pom-tile { display: grid; place-items: center; }
@@ -182,61 +183,69 @@ svg { display: block; }
 .play-big { width: 200px; height: 200px; border-radius: 50%; background: var(--c); box-shadow: 0 6px 0 var(--l); color: #FFF7EA; display: grid; place-items: center; }
 .play-big .icon { width: 96px; height: 96px; }
 
-/* ---------- player (spec 4.5) ---------- */
-#player { position: fixed; inset: 0; z-index: 10; background: var(--player-bg); visibility: hidden; opacity: 0; transition: opacity 300ms; }
+/* ---------- player, spec v4 (4.5 to 4.8): full screen, controls that fade ---------- */
+#player { position: fixed; inset: 0; z-index: 10; background: #000; visibility: hidden; opacity: 0; transition: opacity 300ms; }
 #player.open { visibility: visible; opacity: 1; }
-#rail { position: absolute; left: 0; top: 0; bottom: 0; width: 176px; background: var(--player-bg); }
-.rail-btn { position: absolute; left: 28px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,247,234,.9); color: #16131F; display: grid; place-items: center; box-shadow: 0 6px 0 rgba(0,0,0,.4); }
-.rail-btn .icon { width: 60px; height: 60px; }
-.rail-btn:nth-child(1) { top: 24px; } .rail-btn:nth-child(2) { top: 168px; } .rail-btn:nth-child(3) { top: 304px; }
-.rail-btn:nth-child(4) { top: 440px; } .rail-btn:nth-child(5) { top: 576px; }
-.rail-btn.inert { opacity: .3; pointer-events: none; }
-/* Spec 4.8: YouTube's own start screen or an ad: back stays active, the rest fade to 30% and do nothing. */
-#player.needs-tap .rail-btn:not([data-r="back"]) { opacity: .3; pointer-events: none; }
-.rail-dots { position: absolute; left: 28px; top: 712px; display: flex; gap: 6px; }
-#video-area { position: absolute; left: 192px; top: 140px; width: 986px; height: 555px; border-radius: 12px; overflow: hidden; background: #000; }
+/* The picture fills the viewport, contained on black. */
+#video-area { position: absolute; inset: 0; overflow: hidden; background: #000; z-index: 1; }
 #kc-video, #kc-yt, #kc-yt iframe, #kc-cover { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 #kc-video { object-fit: contain; background: #000; }
 #player.youtube #kc-video, #player:not(.youtube) #kc-yt { visibility: hidden; }
 #player:not(.audio) #kc-cover { display: none; }
-.cover-art { position: absolute; inset: 0; background: var(--c); display: grid; place-items: center; }
-.cover-art img { width: 420px; height: 420px; object-fit: cover; border-radius: 28px; box-shadow: 0 8px 0 rgba(0,0,0,.2); animation: drift 20s ease-in-out infinite alternate; }
-@keyframes drift { to { transform: translate(18px, -10px) scale(1.03); } }
+.cover-art { position: absolute; inset: 0; background: #000; }
+.cover-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; animation: drift 20s ease-in-out infinite alternate; }
+@keyframes drift { to { transform: scale(1.03); } }
 [data-motion="reduced"] .cover-art img { animation: none; }
 #video-area::after { content: ''; position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 3s; }
 #video-area.dim-night::after { opacity: .92; }
-
-#stall { position: absolute; inset: 0; background: rgba(43,37,65,.2); opacity: 0; pointer-events: none; transition: opacity 300ms; }
-#stall.open { opacity: 1; transition-duration: 400ms; }
-.stall-pom { position: absolute; top: 16px; right: 16px; width: 96px; height: 96px; }
-#pause-screen { position: absolute; inset: 0; display: none; }
-#pause-screen.open { display: block; }
-.pause-still { position: absolute; inset: 0; background: #222 center/cover no-repeat; filter: brightness(.55); }
-.pause-row { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 40px; }
-.pause-play { width: 200px; height: 200px; border-radius: 50%; background: var(--c, #FFD064); box-shadow: 0 6px 0 var(--l, #DDA634); color: #FFF7EA; display: grid; place-items: center; }
-.pause-play .icon { width: 96px; height: 96px; }
-.pause-gap { width: 240px; height: 135px; }
-.pause-tile { position: relative; width: 240px; height: 135px; border-radius: 18px; overflow: hidden; background: var(--c, #555); box-shadow: 0 6px 0 rgba(0,0,0,.4), inset 0 0 0 3px #fff; }
-.pause-tile img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: cover; border-radius: 15px; }
-.pause-tile .fallback svg { width: 30%; }
-.pause-arrow { position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); width: 52px; height: 52px; border-radius: 50%; background: #FFF7EA; color: #2B2541; display: grid; place-items: center; }
-.pause-arrow .icon { width: 34px; height: 34px; }
-.pause-pom { position: absolute; left: 16px; bottom: 12px; width: 96px; height: 96px; }
-
-/* ---------- full-screen player (Daniel 2026-11-25 (2); flag kcPlayerV4 until spec v4) ---------- */
-#player.full #video-area { left: 0; top: 0; width: 100%; height: 100%; border-radius: 0; z-index: 1; }
-#player.full #kc-video { object-fit: contain; background: #000; }
-#player.full #rail { z-index: 3; background: rgba(0, 0, 0, .55); transition: opacity 300ms ease; }
-#player.full.controls-hidden #rail { opacity: 0; pointer-events: none; }
+/* TorBox video and audio: an invisible layer under the overlay catches the revealing touch. YouTube: none. */
 #touch-catcher { position: absolute; inset: 0; display: none; }
-#player.full:not(.youtube) #touch-catcher { display: block; }
-#player.full .cover-art { background: var(--c); }
-@media (orientation: portrait) {
-  #player.full #rail { position: absolute; inset: 0; width: auto; height: auto; background: rgba(0, 0, 0, .45); pointer-events: none; }
-  #player.full #rail .rail-btn { pointer-events: auto; }
-  #player.full.controls-hidden #rail .rail-btn { pointer-events: none; }
-}
-[data-motion="reduced"] #player.full #rail { transition: none; }
+#player:not(.youtube) #touch-catcher { display: block; }
+/* YouTube paused: the iframe is hidden and its own still fills the screen, letterboxed, dimmed to 60%. */
+#pause-screen { position: absolute; inset: 0; display: none; background: #000; }
+#pause-screen.open { display: block; }
+.pause-still { position: absolute; inset: 0; background: #000 center/contain no-repeat; filter: brightness(.6); }
+
+/* The controls overlay: white round buttons on a 45% black scrim, fading over 400 ms (opacity only). */
+#rail { position: absolute; inset: 0; z-index: 3; background: rgba(0, 0, 0, .45); transition: opacity 400ms ease; }
+#player.controls-hidden #rail { opacity: 0; pointer-events: none; }
+#player.tap-guard .rail-btn, #player.tap-guard .pause-tile { pointer-events: none; }   /* 250 ms after a reveal */
+.rail-btn { position: absolute; width: 120px; height: 120px; border-radius: 50%; background: #fff; color: #2B2541; display: grid; place-items: center; box-shadow: 0 6px 0 rgba(0, 0, 0, .55); }
+.rail-btn.pressed { box-shadow: 0 2px 0 rgba(0, 0, 0, .55); }
+.rail-btn .icon { width: 60px; height: 60px; }
+/* Anchored to the viewport (Daniel 2026-11-25 (4)): corners keep the gutter and the safe area; the middle row sits
+   on the true centre (160 play, 120 skips, 40 px apart). At 1194x834 and 834x1194 this is exactly spec v4. */
+.rail-btn[data-r="back"] { left: calc(var(--gutter) + env(safe-area-inset-left, 0px)); top: max(24px, env(safe-area-inset-top, 0px)); }
+.rail-btn[data-r="next"] { right: calc(var(--gutter) + env(safe-area-inset-right, 0px)); top: max(24px, env(safe-area-inset-top, 0px)); }
+.rail-btn[data-r="back15"] { left: calc(50% - 240px); top: calc(50% - 60px); }
+.rail-btn[data-r="toggle"] { left: calc(50% - 80px); top: calc(50% - 80px); width: 160px; height: 160px; }
+.rail-btn[data-r="toggle"] .icon { width: 80px; height: 80px; }
+.rail-btn[data-r="fwd15"] { left: calc(50% + 120px); top: calc(50% - 60px); }
+.rail-btn.inert { opacity: .35; pointer-events: none; }
+.rail-dots { display: none; }
+/* Paused (4.6): the previous and next pictures bottom-left and bottom-right, Pom small between them. */
+.pause-tiles, .pause-pom, .stall-pom { display: none; }
+#player.paused .pause-tiles, #player.paused .pause-pom { display: block; }
+.pause-tile { position: absolute; bottom: calc(142px + env(safe-area-inset-bottom, 0px)); width: 240px; height: 135px; border-radius: 18px; overflow: visible; background: var(--c, #555); box-shadow: 0 6px 0 rgba(0, 0, 0, .55); }
+.pause-tile[data-dir="previous"] { left: calc(var(--gutter) + env(safe-area-inset-left, 0px)); }
+.pause-tile[data-dir="next"] { right: calc(var(--gutter) + env(safe-area-inset-right, 0px)); }
+.pause-tile img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: cover; border-radius: 15px; }
+.pause-tile .fallback { position: absolute; inset: 0; display: grid; place-items: center; }
+.pause-tile .fallback svg { width: 30%; }
+.pause-arrow { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); width: 52px; height: 52px; border-radius: 50%; background: #fff; color: #2B2541; display: grid; place-items: center; box-shadow: 0 3px 0 rgba(0, 0, 0, .4); }
+.pause-arrow .icon { width: 30px; height: 30px; }
+.pause-pom { position: absolute; left: calc(50% - 48px); bottom: calc(162px + env(safe-area-inset-bottom, 0px)); width: 96px; height: 96px; pointer-events: none; }
+/* Stalled (4.7): controls stay; Pom small bottom-right, 88 px above the bottom edge, breathing. */
+#player.stalled .stall-pom { display: block; animation: fade-in 400ms; }
+.stall-pom { position: absolute; right: calc(var(--gutter) + env(safe-area-inset-right, 0px)); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); width: 96px; height: 96px; pointer-events: none; }
+#stall { display: none; }
+/* YouTube's own start screen or an ad (4.8): the iframe uncovered between a 168 px top band and the bottom
+   strip, only our back arrow, no scrim. */
+#player.needs-tap #video-area { top: 168px; bottom: 64px; }
+#player.needs-tap #rail { background: transparent; opacity: 1; pointer-events: none; }
+#player.needs-tap .rail-btn:not([data-r="back"]), #player.needs-tap .pause-tiles, #player.needs-tap .pause-pom, #player.needs-tap .stall-pom { display: none; }
+#player.needs-tap .rail-btn[data-r="back"] { pointer-events: auto; }
+[data-motion="reduced"] #rail { transition: opacity 400ms linear; }
 
 /* ---------- toy layer (the toys themselves are in toys.css) ---------- */
 #toy-layer { position: fixed; inset: 0; z-index: 20; display: none; background: var(--player-bg); }
@@ -352,13 +361,7 @@ table.report tr.bad td { color: #B4552F; }
   .movie-side { padding: 0; text-align: center; }
   .movie-name { margin-bottom: 24px; font-size: 32px; }
   .movie-actions { justify-content: center; }
-  #rail { width: 100%; height: 0; overflow: visible; background: transparent; }
-  .rail-btn:nth-child(1) { top: 24px; left: 24px; }
-  .rail-btn:nth-child(2), .rail-btn:nth-child(3), .rail-btn:nth-child(4), .rail-btn:nth-child(5) { top: 677px; }
-  .rail-btn:nth-child(2) { left: 89px; } .rail-btn:nth-child(3) { left: 241px; } .rail-btn:nth-child(4) { left: 393px; } .rail-btn:nth-child(5) { left: 545px; }
-  .rail-dots { top: 60px; left: auto; right: 24px; }
-  #video-area { left: 0; top: 168px; width: 834px; height: 469px; border-radius: 0; }
-  .pause-row { gap: 32px; }
   .howmany { flex-direction: column; }
   .moon-asleep { margin-left: 120px; top: 120px; }
+  /* player controls: anchored, so the portrait gutter (24 px) is all they need */
 }

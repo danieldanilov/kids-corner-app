@@ -26,21 +26,83 @@ export function iso639_2(code) {
 // growing negative composition offsets (13.7 s by the end of a Bluey episode), and browsers played the audio
 // early, drifting 31 ms a second. So every audio packet is put on an exactly regular frame grid, and each one's
 // duration is the distance to the next: decode time equals presentation time. A real jump re-anchors.
-export function audioFrameGuess(codec, sampleRate, codecString, firstPacket) {
+const AAC_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+// Frame length from an AAC AudioSpecificConfig: core sampling rate (HE-AAC's SBR runs at twice it) and the
+// 960-sample flag. Mediabunny reports HE-AAC in MKV as mp4a.40.2 at the output rate, so this is the reliable source.
+export function aacFrameFromAsc(desc) {
+  if (!desc) return null;
+  const b = desc instanceof Uint8Array ? desc : new Uint8Array(desc.buffer ? desc.buffer.slice(desc.byteOffset, desc.byteOffset + desc.byteLength) : desc);
+  if (b.length < 2) return null;
+  let pos = 0;
+  const bits = n => { let v = 0; for (let i = 0; i < n; i++) { const byte = b[pos >> 3]; if (byte === undefined) throw new Error('short'); v = v * 2 + ((byte >> (7 - (pos & 7))) & 1); pos++; } return v; };
+  try {
+    let aot = bits(5); if (aot === 31) aot = 32 + bits(6);
+    const sfi = bits(4); const rate = sfi === 15 ? bits(24) : AAC_RATES[sfi];
+    bits(4); // channel configuration
+    if (aot === 5 || aot === 29) { // explicit SBR/PS: extension rate, then the core object type
+      if (bits(4) === 15) bits(24);
+      aot = bits(5); if (aot === 31) aot = 32 + bits(6);
+    }
+    let frame = 1024;
+    if ([1, 2, 3, 4, 6, 7, 17, 19, 20, 21, 22, 23].includes(aot) && bits(1)) frame = 960;
+    return rate > 0 ? frame / rate : null;
+  } catch { return null; }
+}
+
+export function audioFrameGuess(codec, sampleRate, codecString, firstPacket, description) {
+  if (codec === 'aac') {
+    const asc = aacFrameFromAsc(description);
+    if (asc) return asc;
+    if (!(sampleRate > 0)) return null;
+    return (/^mp4a\.40\.(5|29)$/.test(codecString || '') ? 2048 : 1024) / sampleRate;
+  }
   if (!(sampleRate > 0)) return null;
-  if (codec === 'aac') return (/^mp4a\.40\.(5|29)$/.test(codecString || '') ? 2048 : 1024) / sampleRate;
-  if (codec === 'ac3' || codec === 'eac3') return 1536 / sampleRate;
+  if (codec === 'ac3') return 1536 / sampleRate;
+  if (codec === 'eac3') {
+    const d = firstPacket?.data;
+    if (d?.length >= 5 && d[0] === 0x0b && d[1] === 0x77) {
+      const fscod = d[4] >> 6, numblk = (d[4] >> 4) & 3;
+      return (fscod === 3 ? 6 : [1, 2, 3, 6][numblk]) * 256 / sampleRate;
+    }
+    return 1536 / sampleRate;
+  }
   if (codec === 'mp3' && firstPacket?.data?.length >= 4) {
     const v = (firstPacket.data[1] >> 3) & 3; // 3 = MPEG-1
     return (v === 3 ? 1152 : 576) / sampleRate;
   }
   return null;
 }
-export function createAudioGrid(frameGuess) {
+
+const FRAME_SAMPLES = [120, 240, 256, 480, 512, 576, 768, 960, 1024, 1152, 1536, 1920, 2048, 2304, 2880, 3072, 4096];
+function snapFrame(obs, sampleRate) {
+  let best = null;
+  for (const rate of sampleRate > 0 ? [sampleRate, sampleRate / 2] : []) {
+    for (const n of FRAME_SAMPLES) { const c = n / rate; if (best == null || Math.abs(c - obs) < Math.abs(best - obs)) best = c; }
+  }
+  return best != null && Math.abs(best - obs) / obs <= 0.03 ? best : obs;
+}
+// Check the guess against the first packets before anything is emitted (one wrong early step would ratchet the
+// muxer's decode steps). Steady spacing that disagrees with the guess wins, snapped to a real codec frame length.
+export function chooseFrameDuration(guess, timestamps, sampleRate) {
+  const t = (timestamps || []).filter(Number.isFinite);
+  if (t.length < 4) return guess;
+  const d = t.slice(1).map((x, i) => x - t[i]);
+  const med = [...d].sort((a, b) => a - b)[Math.floor(d.length / 2)];
+  if (!(med > 0)) return guess;
+  const tol = Math.max(0.0015, med * 0.25);
+  if (d.filter(x => Math.abs(x - med) <= tol).length < d.length * 0.8) return guess; // irregular: keep the guess
+  const obs = (t[t.length - 1] - t[0]) / (t.length - 1);
+  if (guess > 0 && Math.abs(obs - guess) / guess <= 0.05) return guess;
+  return snapFrame(obs, sampleRate);
+}
+
+export function createAudioGrid(frameGuess, sampleRate) {
   // Mediabunny's muxer never lets a decode step shrink below the previous one, so the placed timestamps must be
-  // exactly regular from the first packet: with a known codec frame length the grid is locked to it; it is only
-  // estimated (and then refined) when the codec doesn't say, or when the stream clearly disagrees with it.
+  // exactly regular from the first packet: with a known frame length the grid is locked to it; it is only
+  // estimated (and then refined) when nothing says, or when the stream clearly disagrees with it. A steady
+  // spacing that keeps missing the grid is a wrong frame length, never a stream of jumps: the grid re-locks.
   let anchor = null, k = 0, last = null, locked = frameGuess > 0, fd = locked ? frameGuess : null;
+  let jumpRun = 0, jumpSpacing = null;
   return {
     get frame() { return fd; },
     // -> { ts, jumped }
@@ -52,10 +114,14 @@ export function createAudioGrid(frameGuess) {
       if (step > 0 && Math.abs(raw - predicted) <= Math.max(0.004, step * 0.25)) {
         const observed = (raw - anchor) / k;
         if (!locked || (k >= 20 && Math.abs(observed - fd) / fd > 0.02)) { locked = false; fd = observed; }
-        last = raw;
+        last = raw; jumpRun = 0;
         return { ts: predicted, jumped: false };
       }
+      const spacing = raw - last;
+      jumpRun = jumpSpacing != null && spacing > 0 && Math.abs(spacing - jumpSpacing) <= Math.max(0.0015, spacing * 0.05) ? jumpRun + 1 : 1;
+      jumpSpacing = spacing;
       anchor = raw; k = 0; last = raw;
+      if (jumpRun >= 2) { fd = snapFrame(spacing, sampleRate); locked = true; jumpRun = 0; return { ts: raw, jumped: false }; }
       return { ts: raw, jumped: true };
     },
   };
@@ -121,12 +187,15 @@ export function createRemuxer(M, input, { videoTrack, audioTrack, fragmentSec = 
           const pk = (await aIt.next()).value;
           if (!pk) return undefined;
           if (pk.timestamp < 0) continue; // priming before 0: Mediabunny would shift the whole track to start at 0
-          if (!grid) grid = createAudioGrid(audioFrameGuess(audioTrack.codec, audioTrack.sampleRate, acfgString, pk));
+          if (!grid) grid = createAudioGrid(chooseFrameDuration(audioFrameGuess(audioTrack.codec, audioTrack.sampleRate, acfgString, pk, adesc), prescan, audioTrack.sampleRate), audioTrack.sampleRate);
           const g = grid.place(pk.timestamp);
           return { pkt: pk, timestamp: g.ts, jumped: g.jumped };
         }
       };
       const acfgString = as ? await audioTrack.getCodecParameterString().catch(() => null) : null;
+      const adesc = as ? (await audioTrack.getDecoderConfig().catch(() => null))?.description : null;
+      const prescan = [];
+      if (as) { for await (const p of as.packets(ak)) { prescan.push(p.timestamp); if (prescan.length >= 16) break; } }
       let v = (await vIt.next()).value, a = aIt ? await nextAudio() : undefined;
       let firstV = true, firstA = true, stoppedAt = null;
       const aborted = () => signal?.aborted;

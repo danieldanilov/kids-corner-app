@@ -30,8 +30,9 @@ export function createFakePlayer({ fake }) {
         }, 500);
         timers.push(tick);
       });
+      globalThis.__kcFakeSession = t;   // tests can act as YouTube's own pause (a touch on the iframe)
       return Object.assign(t, {
-        pause() { playing = false; }, resume() { playing = true; },
+        pause() { if (playing) { playing = false; emit('paused'); } }, resume() { playing = true; emit('resumed'); },   // like the real player
         seek(s) { pos = Math.max(0, Math.min(lengthS, s)); emit('time', { position: pos, duration: lengthS }); },
         stop() { playing = false; timers.forEach(x => { clearTimeout(x); clearInterval(x); }); },
       });

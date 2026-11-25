@@ -154,7 +154,7 @@ export function parseStream(s, item = {}) {
   const threeD = /\b3d\b|\bh-?sbs\b|\bhalf-?(sbs|ou)\b/.test(low);
   const cam = /\b(cam|camrip|hdcam|ts|hdts|telesync|tc|telecine|scr|screener|dvdscr)\b/.test(lowNoExt);
   const audioCodec = /truehd|atmos/.test(low) ? 'truehd' : /\bdts/.test(low) ? 'dts' : /e-?ac-?3|ddp|dd\+/.test(low) ? 'eac3'
-    : /\bac-?3|\bdd[ ._]?[25][ ._]?[01]\b|dolby digital/.test(low) ? 'ac3' : /\baac/.test(low) ? 'aac'
+    : /\bac-?3|\bdd[ ._]?[25][ ._]?[01]\b|dolby digital/.test(low) ? 'ac3' : /he[ ._-]?aac|aac[ ._-]?he|aac[ ._-]?v2/.test(low) ? 'heaac' : /\baac/.test(low) ? 'aac'
     : /\bopus\b/.test(low) ? 'opus' : /\bmp3\b/.test(low) ? 'mp3' : 'unknown';
 
   const flags = flagsOf(title);
@@ -239,7 +239,9 @@ export function scoreCandidate(c, item = {}, learned = {}) {
   let s = 100;
   s += { mp4: 25, mkv: 10, webm: 0, ts: -10 }[c.container] ?? -20;
   s += c.videoCodec === 'h264' ? 15 : c.videoCodec === 'hevc' ? (c.tenBit ? 2 : 8) : 0;
-  s += { aac: 12, ac3: 8, eac3: 8, unknown: 4, mp3: 6, opus: 0, dts: -30, truehd: -40 }[c.audioCodec] ?? 0;
+  // HE-AAC plays about 70 ms late (its decoder delay, unsignalled in MKV): it loses a close call to AAC-LC, AC-3
+  // or E-AC-3 (half a point below AC-3, worth 0.25 Mbps), never enough to pick a much bigger file.
+  s += { aac: 12, ac3: 8, eac3: 8, heaac: 7.5, unknown: 4, mp3: 6, opus: 0, dts: -30, truehd: -40 }[c.audioCodec] ?? 0;
   s += { '1080p': 10, '720p': 8, '576p': 0, '480p': 0 }[c.res] ?? -10;
   if (c.mbps != null) {
     s += c.mbps < 0.4 ? -15 : c.mbps <= 4 ? 10 : c.mbps <= 8 ? -5 : -20;

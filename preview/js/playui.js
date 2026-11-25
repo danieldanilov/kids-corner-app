@@ -18,17 +18,20 @@ export function createPlayUI(app) {
   const rail = $('#rail');
   let ctx = null;            // { data, videos, index, item, session, ... }
   let wakeLock = null;
-  // Full-screen player (Daniel 2026-11-25 (2)): behind a flag until spec v4 lands.
-  let full = false;
-  try { full = app.preview || localStorage.getItem('kcPlayerV4') === '1'; } catch { full = !!app.preview; }
-  app.fullPlayer = full;
+  // Full-screen player with controls that fade (spec v4, 4.5).
   const catcher = document.getElementById('touch-catcher');
-  const autoHide = createAutoHide({ onChange: (v) => layer.classList.toggle('controls-hidden', !v) });
-  if (full) {
-    layer.classList.add('full');
-    // A touch on the video only reveals (or tucks away) the controls; it never pauses.
-    catcher.addEventListener('pointerdown', (e) => { e.preventDefault(); autoHide.touchVideo(); });
-  }
+  const autoHide = createAutoHide({
+    onChange: (v) => layer.classList.toggle('controls-hidden', !v),
+    onGuard: (g) => layer.classList.toggle('tap-guard', g),
+  });
+  // TorBox video and audio: a touch on the picture only reveals the controls; it never pauses or presses a button.
+  catcher.addEventListener('pointerdown', (e) => { e.preventDefault(); autoHide.touchVideo(); });
+  // A tap on the scrim between buttons only restarts the 3 s count; the controls never vanish under her finger.
+  rail.addEventListener('pointerdown', (e) => { if (e.target === rail) autoHide.touchVideo(); });
+  const playingNow = (c) => {          // playback runs: TorBox and audio start the 3 s count, YouTube hides at once
+    autoHide.setPlaying(true);
+    if (c?.item.kind === 'youtube') autoHide.hideNow();
+  };
 
   rail.innerHTML = `
     <button class="rail-btn tapable" data-r="back" aria-label="back">${ICONS.back}</button>
@@ -36,8 +39,10 @@ export function createPlayUI(app) {
     <button class="rail-btn tapable" data-r="back15" aria-label="back 15 seconds">${ICONS.back15}</button>
     <button class="rail-btn tapable" data-r="fwd15" aria-label="forward 15 seconds">${ICONS.fwd15}</button>
     <button class="rail-btn tapable" data-r="next" aria-label="next">${ICONS.next}</button>
+    <div class="pause-tiles"></div>
+    <div class="pause-pom" aria-hidden="true"></div>
+    <div class="stall-pom" aria-hidden="true">${pom('day', 'breathe')}</div>
     <div class="rail-dots"></div>`;
-  stallEl.innerHTML = `<div class="stall-pom">${pom('day', 'breathe')}</div>`;
 
   function itemFor(data, v) {
     const t = data.title;
@@ -92,7 +97,7 @@ export function createPlayUI(app) {
     layer.classList.toggle('open', on);
     layer.classList.toggle('audio', on && ctx?.item.kind === 'audio');
     layer.classList.toggle('youtube', on && ctx?.item.kind === 'youtube');
-    if (!on) { pauseEl.classList.remove('open'); stallEl.classList.remove('open'); cover.innerHTML = ''; area.classList.remove('dim-night'); }
+    if (!on) { pauseEl.classList.remove('open'); layer.classList.remove('paused', 'stalled'); cover.innerHTML = ''; area.classList.remove('dim-night'); }
   }
 
   async function wake(on) {
@@ -112,7 +117,7 @@ export function createPlayUI(app) {
   }
 
   function teardown() {
-    layer.classList.remove('needs-tap', 'controls-hidden');
+    layer.classList.remove('needs-tap', 'controls-hidden', 'paused', 'stalled', 'tap-guard');
     autoHide.setPlaying(false);
     document.getElementById('kc-yt').style.visibility = '';
     if (!ctx) return;
@@ -160,11 +165,12 @@ export function createPlayUI(app) {
     const my = ctx;
     const on = (type, fn) => s.addEventListener(type, (e) => { if (ctx === my) fn(e.detail || {}); });
     on('progress', (d) => { my.lastProgress = d.fraction; my.toy?.setProgress(d.fraction); });
-    on('ready', () => { if (my.item.kind === 'torbox') app.torboxKeyProven = true; autoHide.setPlaying(true); onReady(my); });   // proof the TorBox key works this session
+    on('ready', () => { if (my.item.kind === 'torbox') app.torboxKeyProven = true; playingNow(my); onReady(my); });   // proof the TorBox key works this session
     on('time', (d) => onTime(my, d));
     on('paused', () => { autoHide.setPlaying(false); onPaused(my); });
-    on('stalled', () => { autoHide.setPlaying(false); clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => stallEl.classList.add('open'), 1000); });
-    on('resumed', () => { autoHide.setPlaying(true); clearTimeout(my.stallTimer); stallEl.classList.remove('open'); if (my.paused) { my.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); } });
+    // Stalled more than 1 s (4.7): the controls show and stay, Pom breathes small bottom-right. YouTube buffers inside its own player.
+    on('stalled', () => { if (my.item.kind === 'youtube') return; clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => { if (ctx === my) { layer.classList.add('stalled'); autoHide.setPlaying(false); } }, 1000); });
+    on('resumed', () => { clearTimeout(my.stallTimer); layer.classList.remove('stalled'); if (my.paused) { my.paused = false; endPause(); setRail(); } playingNow(my); });
     on('ended', () => onEnded(my));
     on('needs-tap', async () => {
       clearTimeout(my.toyTimer);
@@ -175,7 +181,8 @@ export function createPlayUI(app) {
         my.toy?.destroy(); my.toy = null;
       }
       toyLayer.classList.remove('open', 'fading');
-      pauseEl.classList.remove('open'); stallEl.classList.remove('open');
+      pauseEl.classList.remove('open'); layer.classList.remove('paused', 'stalled');
+      autoHide.setPlaying(false);
       layer.classList.add('needs-tap');
     });
     on('failed-all', (d) => fail(d.reasons || [], my));
@@ -242,25 +249,34 @@ export function createPlayUI(app) {
 
   function onPaused(c) {
     c.paused = true;
-    autoHide.setPlaying(false);   // paused: the controls come back and stay
+    autoHide.setPlaying(false);   // paused (4.6): the controls show and stay
     setRail();
-    if (c.item.kind === 'audio') return;            // a story shows its cover; the rail's play button resumes
-    if (c.item.kind === 'youtube') document.getElementById('kc-yt').style.visibility = 'hidden';
+    layer.classList.add('paused');
     const v = c.videos;
-    const still = c.videos[c.index].thumbnail || c.data.title.background || c.data.title.poster || '';
-    const tile = (i, dir) => i < 0 || i >= v.length ? '<span class="pause-gap" aria-hidden="true"></span>' :
-      `<button class="pause-tile tapable" data-i="${i}" aria-label="${dir}"><span class="fallback">${CHIP_ART[c.cat] || ''}</span>${v[i].thumbnail ? `<img src="${v[i].thumbnail}" alt="" onerror="this.remove()">` : ''}<span class="pause-arrow">${dir === 'previous' ? ICONS.prev : ICONS.next}</span></button>`;
-    pauseEl.innerHTML = `<div class="pause-still" style="background-image:url('${still.replace(/'/g, '%27')}')"></div>
-      <div class="pause-row">${tile(c.index - 1, 'previous')}<button class="pause-play tapable" data-cat="${c.cat}" aria-label="play">${ICONS.play}</button>${tile(c.index + 1, 'next')}</div>
-      <div class="pause-pom">${pom(app.bedtime ? 'night' : 'day')}</div>`;
-    pauseEl.classList.add('open');
+    const tile = (i, dir) => i < 0 || i >= v.length ? '' :
+      `<button class="pause-tile tapable" data-i="${i}" data-dir="${dir}" data-cat="${c.cat}" aria-label="${dir}"><span class="fallback">${CHIP_ART[c.cat] || ''}</span>${v[i].thumbnail ? `<img src="${v[i].thumbnail}" alt="" onerror="this.remove()">` : ''}<span class="pause-arrow">${dir === 'previous' ? ICONS.prev : ICONS.next}</span></button>`;
+    rail.querySelector('.pause-tiles').innerHTML = tile(c.index - 1, 'previous') + tile(c.index + 1, 'next');
+    rail.querySelector('.pause-pom').innerHTML = pom(app.bedtime ? 'night' : 'day');
+    if (c.item.kind === 'youtube') {   // the iframe is hidden, never covered; its own still fills the screen
+      document.getElementById('kc-yt').style.visibility = 'hidden';
+      const still = v[c.index].thumbnail || c.data.title.background || c.data.title.poster || '';
+      pauseEl.innerHTML = `<div class="pause-still" style="background-image:url('${still.replace(/'/g, '%27')}')"></div>`;
+      pauseEl.classList.add('open');
+    }
   }
 
-  function doPause() { if (!ctx) return; ctx.session.pause(); if (!ctx.paused) onPaused(ctx); saveProgress(); app.saveUsage(); }
-  function doResume() { if (!ctx) return; autoHide.setPlaying(true); ctx.paused = false; pauseEl.classList.remove('open'); document.getElementById('kc-yt').style.visibility = ''; setRail(); ctx.session.resume(); }
+  function endPause() {
+    layer.classList.remove('paused');
+    rail.querySelector('.pause-tiles').innerHTML = '';
+    pauseEl.classList.remove('open'); pauseEl.innerHTML = '';
+    document.getElementById('kc-yt').style.visibility = '';
+  }
 
-  pauseEl.addEventListener('click', (e) => {
-    if (e.target.closest('.pause-play')) { app.effect('button'); doResume(); return; }
+
+  function doPause() { if (!ctx) return; ctx.session.pause(); if (!ctx.paused) onPaused(ctx); saveProgress(); app.saveUsage(); }
+  function doResume() { if (!ctx) return; ctx.paused = false; endPause(); setRail(); playingNow(ctx); ctx.session.resume(); }
+
+  rail.addEventListener('click', (e) => {
     const t = e.target.closest('.pause-tile');
     if (t && ctx) { app.effect('poster'); const c = ctx; saveProgress(); logPlay({ endReason: 'switched' }); start({ data: c.data, videos: c.videos, index: +t.dataset.i, from: t }); }
   });

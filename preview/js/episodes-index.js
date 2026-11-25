@@ -29,6 +29,7 @@ export async function crawlEpisodes({ seriesIds, version, fetchJson, store, isBu
     while (queue.length) {
       await waitIdle();
       const id = queue.shift();
+      if (!id) break;   // the other worker took the last show while this one waited for idle
       try {
         const j = await fetchJson(`${CINEMETA}${id}.json`, { cache: 'no-store' });   // kept once, as docs; the service worker skips it
         saved.series[id] = { at: now(), docs: toDocs(id, j.meta) };

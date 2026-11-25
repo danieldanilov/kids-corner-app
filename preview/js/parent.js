@@ -135,6 +135,11 @@ export async function renderParent(view, app) {
       <div class="field"><span>Interface phrases</span>${seg('sounds.namesLang', s.sounds.namesLang, [['en-ru', 'English then Russian'], ['en', 'English'], ['ru', 'Russian']])}</div>
     </section>
 
+    <section><h2>Theme</h2>
+      <div class="field"><span>Colours</span>${seg('theme', s.theme || 'dark', [['dark', 'Dark'], ['light', 'Light']])}</div>
+      <p class="hint">Dark is the default, so the screen isn't bright in a dark room. Bedtime is dimmer and warmer still.</p>
+    </section>
+
     <section><h2>Bedtime</h2>
       <div class="field"><span>Bedtime now</span>${sw('bedtime.manual', s.bedtime.manual)}</div>
       ${s.bedtime.start || s.bedtime.end

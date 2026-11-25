@@ -5,6 +5,7 @@ let lastAdded = 0; // strictly increasing, so same-millisecond hearts keep their
 export const DEFAULT_SETTINGS = {
   sounds: { all: true, names: 'quiet', effects: 'quiet', namesLang: 'en-ru' }, // off | quiet | normal; en-ru | en | ru
   motion: 'auto',            // 'auto' follows the iPad, 'reduced', 'normal'
+  theme: 'dark',             // 'dark' (default, spec 2.1 v8) or 'light'; bedtime has its own look either way
   limits: { dailyMinutes: 0, showsMode: 'off', showsPerDay: 0, movieAtLimit: 'finish' },
   bedtime: { manual: false, start: '', end: '', oneStory: false },
   hidden: [],                // title ids hidden from her

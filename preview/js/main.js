@@ -59,7 +59,8 @@ app.effect = (name) => app.sound.effect(name);
 
 function applyLook() {
   const root = document.documentElement;
-  root.dataset.theme = app.bedtime ? 'bedtime' : 'day';
+  root.dataset.theme = app.bedtime ? 'bedtime' : app.settings.theme === 'light' ? 'light' : 'dark';   // dark unless the grown-up chose Light
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', app.bedtime ? '#15111A' : app.settings.theme === 'light' ? '#FFF7EA' : '#1A1830');
   root.dataset.motion = app.reduced() ? 'reduced' : 'normal';
   app.sound?.configure(app.settings.sounds, app.bedtime);
 }

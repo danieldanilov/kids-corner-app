@@ -5,7 +5,7 @@ import { rankStreams } from './select.js';
 import { decide } from './probe.js';
 import { fetchStreams, fetchCinemeta, resolveViaWorker, scrubSecrets, listOutcome } from './sources.js';
 import { createMseSink, isTypeSupported, mediaSourceClass } from './mse.js';
-import { createYouTubeHost, YT_STATE } from './youtube.js';
+import { createYouTubeHost, YT_STATE, ytHostName } from './youtube.js';
 import { createLearned } from './learned.js';
 import { SILENT_MP4, SILENT_M4A } from './silent.js';
 
@@ -58,7 +58,7 @@ function caps() {
 }
 
 // --- player ----------------------------------------------------------------------------------
-export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets, lang = 'en', options = {} } = {}) {
+export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets, lang = 'en', youtubeHost, options = {} } = {}) {
   const o = { ...DEFAULTS, ...options };
   const engine = createEngineClient();
   const learnedStore = createLearned();
@@ -83,9 +83,23 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     video.controls = false;
     video.preload = 'auto';
   }
-  if (ytContainer) {
-    // Created early so the first YouTube tap lands on a ready player.
-    try { yt = createYouTubeHost(ytContainer, { muted: !!o.muted }); } catch { yt = null; }
+  // YouTube host: 'nocookie' (default) or 'youtube'. Set at boot, by setYouTubeHost(), or per play; a change
+  // takes effect at the next play (a new IFrame player), never under a video that is playing.
+  let wantedYtHost = ytHostName(youtubeHost ?? o.youtubeHost);
+  let ytBusy = false;
+  function ensureYt(name) {
+    if (!ytContainer) return null;
+    if (yt && yt.host === name) return yt;
+    if (yt) yt.destroy();
+    try { yt = createYouTubeHost(ytContainer, { muted: !!o.muted || mutedNow, host: name }); } catch { yt = null; }
+    return yt;
+  }
+  let mutedNow = false;
+  // Created early so the first YouTube tap lands on a ready player.
+  ensureYt(wantedYtHost);
+  function setYouTubeHost(h) {
+    wantedYtHost = ytHostName(h);
+    if (!ytBusy) ensureYt(wantedYtHost); // warm the new host now, so its first tap is fast
   }
 
   function unlock() {
@@ -216,7 +230,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   }
 
   // ---- session ----
-  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false } = {}) {
+  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false, youtubeHost: hostForPlay } = {}) {
     if (current) current._stop('replaced');
     if (!unlocked) unlock();
     const s = new EventTarget();
@@ -267,7 +281,11 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     current = s;
 
     const kind = item?.kind;
-    if (kind === 'youtube') playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly });
+    if (kind === 'youtube') {
+      ensureYt(hostForPlay != null ? ytHostName(hostForPlay) : wantedYtHost);
+      rep.youtubeHost = yt?.host;
+      playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly });
+    }
     else if (kind === 'audio') playAudio(item, startAt, keepAwake, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f) });
     else if (kind === 'torbox' || kind === 'file') playTorbox(item, startAt, s, { emit, rep, markReady, finish, mark, cleanup: f => cleanup.push(f), isStopped: () => stopped });
     else queueMicrotask(() => { rep.failures.push('bad_item'); finish('failed-all', ['bad_item']); });
@@ -610,7 +628,13 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     // After our own end nothing may play again: the end panel would be one frame away.
     s._ctl.resume = () => { if (endedByUs) return; yt.play(); };
     s._ctl.seek = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
-    cleanup(() => { stopping = true; clearInterval(poll); clearTimeout(needsTapT); clearT(); yt.show(false); yt.pause(); yt.setHandler(null); });
+    ytBusy = true;
+    const host = yt;
+    cleanup(() => {
+      stopping = true; clearInterval(poll); clearTimeout(needsTapT); clearT(); host.show(false); host.pause(); host.setHandler(null);
+      ytBusy = false;
+      if (wantedYtHost !== host.host) ensureYt(wantedYtHost); // a switch made during the video applies now
+    });
   }
 
   // ---- Audio ----
@@ -655,6 +679,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   }
 
   function setMuted(on) {
+    mutedNow = !!on;
     if (video) video.muted = !!on;
     if (audio) audio.muted = !!on;
     if (yt) (on ? yt.mute() : yt.unMute());
@@ -665,6 +690,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     prefetch,
     play,
     setMuted,
+    setYouTubeHost,
     engineMode: () => engine.mode(),
     hasMediaSource: () => !!mediaSourceClass(),
   };

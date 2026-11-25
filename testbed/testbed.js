@@ -39,7 +39,7 @@ function record(id, status, data = {}) {
   renderSummary();
 }
 function renderSummary() { $('#summary').textContent = JSON.stringify(results, null, 1); }
-const SECTION_OF = { resolve: 's-resolve', 'audio-lock': 's-audio', settings: 's-settings', env: 's-env' };
+const SECTION_OF = { resolve: 's-resolve', 'audio-lock': 's-audio', settings: 's-settings', env: 's-env', 'yt-premium': 's-premium' };
 function setStatus(id, status) {
   const sub = document.querySelector(`[data-sub="${id}"]`);
   const el = sub || document.querySelector(`#${SECTION_OF[id] || 's-' + id} h2 .status`);
@@ -141,6 +141,31 @@ function askHeard(id, base) {
   yes.onclick = () => { record(id, base.status, { ...base, heard: 'yes' }); row.remove(); };
   no.onclick = () => { record(id, 'fail', { ...base, heard: 'no' }); row.remove(); };
   off.onclick = () => { record(id, base.status === 'pass' ? 'warn' : base.status, { ...base, heard: 'not checked' }); row.remove(); };
+  el.after(row);
+}
+
+// 6h: the same monetised video on each YouTube host; Daniel says whether an ad came first. Each answer is kept
+// (runs: [...]) so two runs per host can be compared.
+async function adsOnHost(host) {
+  const id = 'yt-ads-' + host; clearLog(id); record(id, 'run', { runs: results.steps[id]?.runs || [] });
+  const t0 = performance.now();
+  const s = startSession({ kind: 'youtube', ytId: YT_IDS[0] }, { youtubeHost: host });
+  const r = await waitFor(s, ['ready', 'needs-tap', 'failed-all'], 15000);
+  if (r?.t === 'failed-all') { log(id, 'did not play: ' + JSON.stringify(r.d?.reasons)); return record(id, 'fail', { runs: results.steps[id]?.runs || [], reasons: r.d?.reasons }); }
+  log(id, r?.t === 'ready' ? `playing after ${Math.round(performance.now() - t0)} ms` : 'YouTube is showing its own screen: an ad, or a play button to tap.');
+  const el = document.querySelector(`[data-log="${id}"]`);
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = '<span class="hint">Ad before the video?</span><button>Yes</button><button>No</button>';
+  const [yes, no] = row.querySelectorAll('button');
+  const save = ad => {
+    const runs = [...(results.steps[id]?.runs || []), { ad, displayMode: results.env.displayMode, at: new Date().toISOString() }];
+    record(id, 'warn', { runs, ads: runs.filter(x => x.ad === 'yes').length, of: runs.length });
+    row.remove();
+    const a = results.steps['yt-ads-nocookie'], b = results.steps['yt-ads-youtube'];
+    if (a?.runs?.length && b?.runs?.length) record('yt-premium', 'warn', { nocookie: `${a.ads}/${a.of} with ads`, youtube: `${b.ads}/${b.of} with ads` });
+    s.stop();
+  };
+  yes.onclick = () => save('yes'); no.onclick = () => save('no');
   el.after(row);
 }
 
@@ -297,6 +322,8 @@ const RUNS = {
     log(id, 'the start screen did not show: ' + (r?.t || 'timeout'));
     record(id, 'fail', { startScreenShown: false, outcome: r?.t || 'timeout' });
   },
+  'yt-ads-nocookie': () => adsOnHost('nocookie'),
+  'yt-ads-youtube': () => adsOnHost('youtube'),
   'audio-stop': () => { if (session) session.stop(); },
   async 'audio-lock'() {
     const id = 'audio-lock'; clearLog(id); record(id, 'run');

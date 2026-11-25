@@ -110,7 +110,7 @@ export function applyBedtime(current, wanted, { playing }) {
 export const FAIL_TTL_MS = 7 * 86400000;
 export const SERIES_FAILS_TO_HIDE = 3;
 // Setup problems (no config, a rejected token or origin), an app bug, or a network blip: never the title's fault.
-export const SETUP_RE = /^(not-configured|unauthorized|misconfigured|forbidden|no-player|app_token|torbox_auth|no_secrets|origin|bad_item|unexpected_host)$|^(cache_check|list|torrentio|setup)_|_auth$|^yt_153|network|fetch|load failed|timed? ?out|offline|abort/i;
+export const SETUP_RE = /^(not-configured|unauthorized|misconfigured|forbidden|no-player|app_token|torbox_auth|no_secrets|origin|bad_item|unexpected_host)$|^(cache_check|list|torrentio|setup|upstream)_|^http_5\d\d$|^(bad_response|network)$|_auth$|^yt_153|network|fetch|load failed|timed? ?out|offline|abort/i;
 // none_cached (streams, but not one ready on TorBox) is also exactly what a wrong TorBox key looks like, so it
 // counts against the title only once another TorBox title has played this session (keyProven); before that it's
 // a grown-up hint (Boss ruling).

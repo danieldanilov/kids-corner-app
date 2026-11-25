@@ -317,8 +317,10 @@ export async function renderParent(view, app) {
         btn.disabled = true; status.textContent = 'Checking…'; list.innerHTML = '';
         const r = await checkConnection({ secrets: await app.store.getSecrets(), workerUrl: app.settings.workerUrl });
         btn.disabled = false;
-        status.textContent = r.message; status.className = r.ok ? 'ok' : 'warn';
-        list.innerHTML = r.steps.map(st => `<li class="${st.ok ? 'ok' : 'warn'}">${st.ok ? '✓' : '✗'} ${esc(st.text)}</li>`).join('');
+        // Green only when the TorBox key is proven; amber when it couldn't be confirmed yet; red when something is wrong.
+        status.textContent = r.message; status.className = r.level === 'ok' ? 'ok' : r.level === 'amber' ? 'amber' : 'warn';
+        status.dataset.level = r.level;
+        list.innerHTML = r.steps.map((st, i) => { const last = i === r.steps.length - 1 && !st.ok; const cls = st.ok ? 'ok' : last && r.level === 'amber' ? 'amber' : 'warn'; return `<li class="${cls}">${st.ok ? '✓' : cls === 'amber' ? '?' : '✗'} ${esc(st.text)}</li>`; }).join('');
         if (r.ok) app.setupHint = null;
         return;
       }

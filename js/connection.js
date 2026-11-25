@@ -1,9 +1,16 @@
-// "Check connection" (review S3): the stored Torrentio link and the Worker token, checked step by step on this
-// iPad, with OK or exactly what's wrong in plain words. Never shows a secret and never starts a download: the
-// token is checked with an empty request (the Worker answers 400 once the token passes), and only a cached
-// [TB+] stream is ever resolved (the Worker refuses anything uncached anyway).
+// "Check connection" (reviews app-v1 S3, app-v2 S1): the stored Torrentio link and the Worker token, checked
+// step by step on this iPad, in plain words, never showing a secret and never starting a download. The token is
+// checked with an empty request (the Worker answers 400 once the token passes), and only a cached [TB+] stream
+// is ever resolved. It never says "Connected" without proving the TorBox key: a cached stream has to resolve
+// and TorBox's video server has to answer. Levels: 'ok' (green, proven), 'amber' (couldn't confirm yet), 'fail'.
 const TORRENTIO = 'https://torrentio.strem.fun';
-const TEST_EPISODE = 'series/tt7678620:1:1';   // Bluey S1E1: in the catalog, widely cached
+// Known-popular titles in the catalog, tried in order until one has a stream ready on TorBox.
+export const TEST_TITLES = [
+  { path: 'series/tt7678620:1:1', name: 'Bluey' },
+  { path: 'series/tt0426769:1:1', name: 'Peppa Pig' },
+  { path: 'movie/tt3521164', name: 'Moana' },
+];
+const AMBER = "Couldn't confirm the TorBox key yet: play something and check the Playback report.";
 
 function base(config) {
   let c = String(config || '').trim().replace(/^stremio:\/\//, 'https://');
@@ -19,7 +26,8 @@ async function timed(fetchFn, url, opts = {}, ms = 10000) {
 
 export async function checkConnection({ secrets, workerUrl, fetchFn = (...a) => fetch(...a) }) {
   const steps = [];
-  const fail = (message) => ({ ok: false, message, steps: [...steps, { ok: false, text: message }] });
+  const fail = (message) => ({ ok: false, level: 'fail', message, steps: [...steps, { ok: false, text: message }] });
+  const amber = (why) => ({ ok: false, level: 'amber', message: AMBER, steps: [...steps, { ok: false, text: why }] });
   const pass = (text) => steps.push({ ok: true, text });
   const { torrentioConfig, appToken } = secrets || {};
   if (!torrentioConfig) return fail("The Torrentio link isn't set. Tap Set beside it and paste the link.");
@@ -31,15 +39,20 @@ export async function checkConnection({ secrets, workerUrl, fetchFn = (...a) => 
   if (!r.ok) return fail(`Torrentio didn't accept the link (it answered ${r.status}). Copy the link again from torrentio.strem.fun/configure.`);
   pass('Torrentio accepts the link.');
 
-  // 2. Torrentio lists TorBox streams for a test episode.
-  let streams = [];
-  try { r = await timed(fetchFn, `${base(torrentioConfig)}/stream/${TEST_EPISODE}.json`); streams = r.ok ? ((await r.json()).streams || []) : []; }
-  catch { return fail("Torrentio didn't answer for a test episode. Try again in a minute."); }
-  if (!streams.length) return fail("Torrentio returned nothing for a test episode (Bluey). Try again in a minute; if it keeps happening, make the link again.");
-  const viaTorbox = streams.filter(s => /^\[TB/.test(s.name || ''));
-  if (!viaTorbox.length) return fail("Torrentio isn't using TorBox. Make the link again on torrentio.strem.fun/configure with your TorBox key filled in.");
-  const cached = viaTorbox.filter(s => /^\[TB\+\]/.test(s.name || '') && /^https:\/\/torrentio\.strem\.fun\/resolve\//.test(s.url || ''));
-  pass(`Torrentio lists TorBox streams (${cached.length} ready to play for the test episode).`);
+  // 2. Torrentio lists TorBox streams; find a test title with one ready on TorBox.
+  let sawTorbox = false, sawAny = false, cached = [], found = null;
+  for (const t of TEST_TITLES) {
+    let streams = [];
+    try { r = await timed(fetchFn, `${base(torrentioConfig)}/stream/${t.path}.json`); streams = r.ok ? ((await r.json()).streams || []) : []; } catch { continue; }
+    if (streams.length) sawAny = true;
+    const viaTorbox = streams.filter(s => /^\[TB/.test(s.name || ''));
+    if (viaTorbox.length) sawTorbox = true;
+    cached = viaTorbox.filter(s => /^\[TB\+\]/.test(s.name || '') && /^https:\/\/torrentio\.strem\.fun\/resolve\//.test(s.url || ''));
+    if (cached.length) { found = t; break; }
+  }
+  if (!sawAny) return fail("Torrentio returned nothing for the test titles. Try again in a minute; if it keeps happening, make the link again.");
+  if (!sawTorbox) return fail("Torrentio isn't using TorBox. Make the link again on torrentio.strem.fun/configure with your TorBox key filled in.");
+  pass(found ? `Torrentio lists streams ready on TorBox (${found.name}).` : 'Torrentio lists TorBox streams, but none of the test titles is ready on TorBox right now.');
 
   // 3. The Worker accepts the app token and this address (an empty request: 400 means the token passed).
   const endpoint = String(workerUrl || '').replace(/\/+$/, '') + '/resolve';
@@ -51,22 +64,20 @@ export async function checkConnection({ secrets, workerUrl, fetchFn = (...a) => 
   if (r.status !== 400) return fail(`The resolver answered something unexpected (${r.status}). Try again in a minute.`);
   pass('The resolver accepts the app token.');
 
-  // 4. One cached stream resolves to a TorBox download address (nothing new is started).
-  if (!cached.length) return { ok: true, message: 'Connected. The test episode has no stream ready to play right now, so playback itself was not tried.', steps };
+  // 4. Prove the TorBox key: a cached stream resolves and TorBox's video server answers this iPad.
+  if (!found) return amber('No test title had a stream ready on TorBox, so the TorBox key could not be tried.');
   let j = {};
   try { r = await timed(fetchFn, endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-App-Token': appToken }, body: JSON.stringify({ url: cached[0].url }) }); j = await r.json().catch(() => ({})); }
-  catch { return fail("The resolver didn't answer for the test episode. Try again in a minute."); }
+  catch { return amber("The resolver didn't answer for the test title, so the TorBox key could not be tried."); }
   if (j.status === 'ok' && typeof j.url === 'string') {
-    pass('TorBox hands out the test episode.');
     try {
       const g = await timed(fetchFn, j.url, { headers: { Range: 'bytes=0-1' } });
-      if (g.status === 206 || g.status === 200) pass('The video server answers this iPad.');
-      else return fail(`TorBox's video server answered ${g.status}. Try again in a minute.`);
-    } catch { return fail("TorBox's video server didn't answer this iPad. Try again in a minute."); }
-    return { ok: true, message: 'Connected. Everything works.', steps };
+      if (g.status !== 206 && g.status !== 200) return amber(`TorBox handed out the test title, but its video server answered ${g.status}.`);
+    } catch { return amber("TorBox handed out the test title, but its video server didn't answer this iPad."); }
+    pass(`TorBox hands out ${found.name}, and its video server answers this iPad.`);
+    return { ok: true, level: 'ok', message: 'Connected. Everything works.', steps };
   }
   const reason = String(j.reason || j.status || r.status);
   if (/torbox_auth/.test(reason)) return fail('TorBox rejected the key inside the Torrentio link. Check the key on torbox.app and make the link again.');
-  if (/not_cached|downloading/.test(reason)) return { ok: true, message: 'Connected. The test episode is not ready on TorBox right now, so playback itself was not tried.', steps };
-  return fail(`The test episode didn't resolve (${reason.replace(/[^\w-]/g, '').slice(0, 40)}). Try again in a minute.`);
+  return amber(`The test title didn't resolve (${reason.replace(/[^\w-]/g, '').slice(0, 40)}), so the TorBox key could not be confirmed.`);
 }

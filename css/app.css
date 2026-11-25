@@ -292,7 +292,7 @@ svg { display: block; }
 .hint, .summary { color: var(--ink-2); font-size: 15px; }
 .summary { color: var(--ink); }
 .notice { background: #FFE9C7; color: #2B2541; padding: 12px 16px; border-radius: 12px; }
-b.ok, .ok { color: #2F8A68; } b.warn, .warn { color: #B4552F; } b.muted { color: var(--ink-2); font-weight: 600; }
+b.ok, .ok { color: #2F8A68; } b.warn, .warn { color: #B4552F; } .amber { color: #9A6A00; } b.muted { color: var(--ink-2); font-weight: 600; }
 ol.setup { padding-left: 22px; margin: 8px 0 12px; color: var(--ink); font-size: 16px; line-height: 1.45; }
 ol.setup code { font-size: 13px; background: var(--paper-2); padding: 2px 5px; border-radius: 6px; -webkit-user-select: all; user-select: all; word-break: break-all; }
 .check-steps li { justify-content: flex-start; }

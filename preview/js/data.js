@@ -55,12 +55,13 @@ export function isAllowedDataUrl(u) {
   return u.startsWith(CINEMETA + 'meta/movie/') || u.startsWith(CINEMETA + 'meta/series/');
 }
 
-export async function defaultFetchJson(url, { timeoutMs = 12000 } = {}) {
+// cache: 'no-store' also tells the service worker to leave the response out of its data cache (the search crawl).
+export async function defaultFetchJson(url, { timeoutMs = 12000, cache } = {}) {
   if (!isAllowedDataUrl(url)) throw new Error('blocked data url');
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: ctl.signal });
+    const res = await fetch(url, cache ? { signal: ctl.signal, cache } : { signal: ctl.signal });
     if (!res.ok) throw new Error('http ' + res.status);
     return await res.json();
   } finally { clearTimeout(t); }

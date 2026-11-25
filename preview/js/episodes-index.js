@@ -29,7 +29,7 @@ export async function crawlEpisodes({ seriesIds, version, fetchJson, store, isBu
       await waitIdle();
       const id = todo.shift();
       try {
-        const j = await fetchJson(`${CINEMETA}${id}.json`);
+        const j = await fetchJson(`${CINEMETA}${id}.json`, { cache: 'no-store' });   // kept once, as docs; the service worker skips it
         saved.series[id] = { at: now(), docs: toDocs(id, j.meta) };
         if (++dirty >= 10) { dirty = 0; await store.set(saved); }   // save as it goes, so a closed app keeps its progress
         onProgress(all());

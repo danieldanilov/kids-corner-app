@@ -8,7 +8,7 @@ export function createFakePlayer({ fake }) {
     unlock() {},
     prefetch() {},
     play(item, { startAt = 0, youtubeHost } = {}) {
-      globalThis.__kcLastPlay = { kind: item.kind, youtubeHost };   // tests read what the app asked for
+      globalThis.__kcLastPlay = { kind: item.kind, youtubeHost, videoId: item.videoId };   // tests read what the app asked for
       const lengthS = cfg.lengths?.[item.videoId] ?? cfg.lengthS ?? 6;
       const t = new EventTarget();
       const emit = (type, detail) => t.dispatchEvent(new CustomEvent(type, { detail }));

@@ -1,6 +1,6 @@
 // Kids Corner service worker: app shell, catalog JSON and fonts cached so the Home Screen app opens instantly.
 // Never caches video or audio, range requests, Torrentio, the resolver, TorBox or YouTube.
-const VERSION = '7047e2f41092';
+const VERSION = '8927e332e52b';
 const PRECACHE = ["./","css/app.css","css/toys.css","icons/apple-touch-icon.png","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","./index.html","js/art.js","js/connection.js","js/controls.js","js/data.js","js/episodes-index.js","js/fake-player.js","js/gate.js","js/main.js","js/parent.js","js/playback.js","js/playui.js","js/rules.js","js/search.js","js/secrets.js","js/sound.js","js/store.js","js/toys.js","js/views.js","manifest.webmanifest","player/engine.js","player/index.js","player/learned.js","player/mse.js","player/probe.js","player/remux-worker.js","player/remux.js","player/select.js","player/silent.js","player/sources.js","player/vendor/MEDIABUNNY-LICENSE.txt","player/vendor/mediabunny.min.mjs","player/youtube.js","voice/index.json"];
 // The preview copy (/kids-corner-app/preview/) keeps its own shell cache so the two never delete each other's.
 const PREVIEW = self.registration.scope.includes('/preview/');
@@ -64,6 +64,7 @@ async function cacheFirst(e, cacheName, max) {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || req.headers.has('range')) return;          // video/audio byte ranges: never touched
+  if (req.cache === 'no-store') return;                                    // the search crawl: kept once, as docs in IndexedDB
   const dest = req.destination;
   if (dest === 'video' || dest === 'audio' || dest === 'iframe') return;
   const url = new URL(req.url);

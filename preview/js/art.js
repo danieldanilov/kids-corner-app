@@ -24,6 +24,8 @@ const I = {
  next:`<svg viewBox="0 0 64 64"><path d="M16 16l24 16-24 16z" fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><rect x="44" y="14" width="8" height="36" rx="3" fill="currentColor"/></svg>`,
  again:`<svg viewBox="0 0 64 64"><path d="M49 34A17 17 0 1 1 43 21" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M49 27L36 25L46 14z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`,
  check:`<svg viewBox="0 0 64 64"><path d="M14 34l12 12 24-26" fill="none" stroke="#41A684" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ search:`<svg viewBox="0 0 64 64"><circle cx="27" cy="27" r="16" fill="#DDF1FF" stroke="currentColor" stroke-width="7"/><path d="M39 39l14 14" stroke="currentColor" stroke-width="9" stroke-linecap="round"/></svg>`,
+ clear:`<svg viewBox="0 0 64 64"><path d="M20 20l24 24M44 20L20 44" stroke="currentColor" stroke-width="8" stroke-linecap="round"/></svg>`,
  lock:`<svg class="lk" viewBox="0 0 40 40"><rect x="8" y="17" width="24" height="18" rx="5" fill="currentColor"/><path d="M13 17v-4a7 7 0 0 1 14 0v4" fill="none" stroke="currentColor" stroke-width="3.5"/></svg>`,
  speaker:`<svg viewBox="0 0 32 32"><path d="M6 12h5l7-6v20l-7-6H6z" fill="#2B2541"/><path d="M22 11q4 5 0 10M25 8q7 8 0 16" stroke="#2B2541" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`,
 };
@@ -59,7 +61,7 @@ export const ROW_ART = { myshows: I.heart, keep: I.half, new: I.sprout, stories:
 export const ROW_LABEL = { myshows: 'My shows', keep: 'Keep watching', new: 'New', stories: 'Stories', sleepyshows: 'Sleepy shows', sleepyvideos: 'Sleepy videos' };
 export const ICONS = Object.fromEntries(Object.entries({
   home: I.house, back: I.backA, play: I.play, prev: I.prev, pause: I.pause, back15: I.rew, fwd15: I.fwd, next: I.next, again: I.again,
-  heart: I.heartO, heartFull: I.heart, lock: I.lock, left: I.left, right: I.right, check: I.check,
+  heart: I.heartO, heartFull: I.heart, lock: I.lock, left: I.left, right: I.right, check: I.check, search: I.search, clear: I.clear,
 }).map(([k, v]) => [k, withClass(v, 'icon')]));
 
 // Cushion for the end of a shelf and the sleeping screens.

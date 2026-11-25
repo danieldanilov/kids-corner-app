@@ -370,16 +370,18 @@ export function createPlayUI(app) {
     app.go(c.returnTo || `#/t/${c.data.title.type}/${c.data.title.id}`);
   }
 
-  // Resume from Keep watching: straight into the loading moment, no show page on the way.
-  async function resume(key, from) {
-    const p = app.progress.get(key);
-    if (!p) return;
-    const k = `${p.titleType}/${p.titleId}`;
-    let data = app.titleReady.get(k);
-    if (!data) { try { data = await app.title(p.titleType, p.titleId); } catch { return; } }
-    const index = data.videos.findIndex(v => v.id === key);
-    if (index < 0) { app.go(`#/t/${p.titleType}/${p.titleId}`); return; }
+  // Straight into the loading moment for one video of a title, no show page on the way; the title clip plays at
+  // the hand-off. Keep watching and search episode tiles (spec 4.1, 4.10). Back returns to the launching screen.
+  async function playVideo(type, titleId, videoId, from) {
+    let data = app.titleReady.get(`${type}/${titleId}`);
+    if (!data) { try { data = await app.title(type, titleId); } catch { return; } }
+    const index = data.videos.findIndex(v => v.id === videoId);
+    if (index < 0) { app.go(`#/t/${type}/${titleId}`); return; }
     start({ data, videos: data.videos, index, from, fromKeep: true });
+  }
+  function resume(key, from) {
+    const p = app.progress.get(key);
+    if (p) return playVideo(p.titleType, p.titleId, key, from);
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -391,5 +393,5 @@ export function createPlayUI(app) {
   });
   window.addEventListener('pagehide', () => { if (ctx) { saveProgress(); app.saveUsage(); } });
 
-  return { start, resume, itemFor, get active() { return !!ctx; } };
+  return { start, resume, playVideo, itemFor, get active() { return !!ctx; } };
 }

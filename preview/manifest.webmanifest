@@ -1,6 +1,6 @@
 {
-  "name": "Kids Corner",
-  "short_name": "Kids Corner",
+  "name": "Kids Corner (preview)",
+  "short_name": "KC preview",
   "description": "April's shows, films, stories and YouTube channels.",
   "start_url": "./",
   "scope": "./",

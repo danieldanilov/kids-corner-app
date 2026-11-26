@@ -2,7 +2,7 @@
 // the grown-up gate and parent screen in parent.js.
 import { openStore } from './store.js';
 import { ALL_ROWS, loadCatalogs, homeCategories, languageOf, loadTitle, loadStream, defaultFetchJson, titleOrder } from './data.js';
-import { rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, needsHowMany, canStart, updateSeen, youtubeHostFor } from './rules.js';
+import { migrateFailures, rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, needsHowMany, canStart, updateSeen, youtubeHostFor } from './rules.js';
 import { guardConsole, secretValues, urlCarriesSecret } from './secrets.js';
 import { createSound } from './sound.js';
 import { createPlayback } from './playback.js';
@@ -75,6 +75,18 @@ app.checkBedtime = () => {
   return true;
 };
 
+// ---------- one gesture, one level (QA bug 8) ----------
+// Back and the house sit in the same spot on every screen, so the second tap of a double tap would land on the next
+// screen's house. A back or house tap within 600 ms of the last one is swallowed.
+const NAV_SEL = '.home-btn, .rail-btn[data-r="back"], .card-back, .toy-back, .gate-home';
+let navUntil = 0;
+window.addEventListener('click', (e) => {
+  if (!e.target.closest?.(NAV_SEL)) return;
+  const now = performance.now();
+  if (now < navUntil) { e.stopPropagation(); e.preventDefault(); return; }
+  navUntil = now + 600;
+}, true);
+
 // ---------- routing ----------
 app.go = (hash) => {
   if (urlCarriesSecret(hash, secretList)) return;     // belt and braces: never put a secret in the URL
@@ -143,6 +155,7 @@ async function boot() {
   app.settings.limits = { ...app.settings.limits, dailyMinutes: 0, showsMode: 'off', showsPerDay: 0 };
   app.usage = rollUsage(await app.store.getUsage(), todayKey());
   app.failed = await app.store.getFailed();
+  if (!(await app.store.getKV('failuresV2'))) { app.failed = migrateFailures(app.failed); await app.store.saveFailed(app.failed); await app.store.setKV('failuresV2', true); }   // QA bug 4
   app.favs = await app.store.allFavs();
   for (const p of await app.store.allProgress()) app.progress.set(p.key, p);
   const secrets = await app.store.getSecrets();

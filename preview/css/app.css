@@ -260,7 +260,22 @@ svg { display: block; }
 .pause-tile .fallback svg { width: 30%; }
 .pause-arrow { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); width: 52px; height: 52px; border-radius: 50%; background: #fff; color: #2B2541; display: grid; place-items: center; box-shadow: 0 3px 0 rgba(0, 0, 0, .4); }
 .pause-arrow .icon { width: 30px; height: 30px; }
-.pause-pom { position: absolute; left: calc(50% - 48px); bottom: calc(162px + env(safe-area-inset-bottom, 0px)); width: 96px; height: 96px; pointer-events: none; }
+.pause-pom { position: absolute; left: calc(50% - 48px); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); width: 96px; height: 96px; pointer-events: none; }
+/* Skip feedback (4.5): a pill 16 px outside back 15 / forward 15 on the middle row, 0.8 s, never tappable. */
+.skip-pop { position: absolute; top: calc(50% - 20px); height: 40px; min-width: 76px; padding: 0 12px; box-sizing: border-box; border-radius: 20px; background: rgba(0, 0, 0, .6); color: #fff; font: 900 26px/40px var(--font); text-align: center; opacity: 0; pointer-events: none; }
+.skip-pop.rew { right: calc(50% + 256px); }
+.skip-pop.fwd { left: calc(50% + 256px); }
+.skip-pop.go { animation: skippop .8s ease-out; }
+@keyframes skippop { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; transform: none; } 70% { opacity: 1; transform: translateY(-4px); } 100% { opacity: 0; transform: translateY(-12px); } }
+[data-motion="reduced"] .skip-pop.go { animation: skippoprm .8s linear; }
+@keyframes skippoprm { 0% { opacity: 0; } 15%, 70% { opacity: 1; } 100% { opacity: 0; } }
+/* Position bar (4.6): 480 x 12, its top 120 px below the centre, time under it; paused only, never tappable. */
+.pos-bar { display: none; position: absolute; left: calc(50% - 240px); top: calc(50% + 120px); width: 480px; pointer-events: none; }
+#player.paused .pos-bar:not(.nodur) { display: block; }
+.pos-bar .trk { height: 12px; border-radius: 6px; background: rgba(255, 255, 255, .3); overflow: hidden; }
+.pos-bar .fil { height: 100%; width: 0; background: #fff; border-radius: 6px; transition: width .3s ease-out; }
+[data-motion="reduced"] .pos-bar .fil { transition: none; }
+.pos-bar .tm { margin-top: 8px; text-align: center; color: rgba(255, 255, 255, .85); font: 700 15px var(--font); }
 /* Stalled (4.7): controls stay; Pom small bottom-right, 88 px above the bottom edge, breathing. */
 #player.stalled .stall-pom { display: block; animation: fade-in 400ms; }
 .stall-pom { position: absolute; right: calc(var(--gutter) + env(safe-area-inset-right, 0px)); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); width: 96px; height: 96px; pointer-events: none; }
@@ -269,7 +284,7 @@ svg { display: block; }
    strip, only our back arrow, no scrim. */
 #player.needs-tap #video-area { top: 168px; bottom: 64px; }
 #player.needs-tap #rail { background: transparent; opacity: 1; pointer-events: none; }
-#player.needs-tap .rail-btn:not([data-r="back"]), #player.needs-tap .pause-tiles, #player.needs-tap .pause-pom, #player.needs-tap .stall-pom { display: none; }
+#player.needs-tap .rail-btn:not([data-r="back"]), #player.needs-tap .pause-tiles, #player.needs-tap .pause-pom, #player.needs-tap .stall-pom, #player.needs-tap .skip-pop, #player.needs-tap .pos-bar { display: none; }
 #player.needs-tap .rail-btn[data-r="back"] { pointer-events: auto; }
 [data-motion="reduced"] #rail { transition: opacity 400ms linear; }
 

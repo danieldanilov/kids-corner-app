@@ -124,13 +124,31 @@ export function recordFailure(failed, item, reasons = [], now = Date.now(), { ke
   return { ...failed, [item.titleId]: { ...cur, videos: { ...cur.videos, [item.videoId]: now } } };
 }
 
+// Whether a failure counts against the content at all. YouTube: only when the player says the video is gone (its
+// verdict in failed-all's kind; older players: codes 2, 100, 101, 150); transient and setup errors never count.
+export function failureCounts(kind, { kind: verdict, reasons = [] } = {}) {
+  if (kind !== 'youtube') return true;
+  if (verdict) return verdict === 'gone';
+  return reasons.some(r => /^yt_(2|100|101|150)$/.test(String(r)));
+}
+
+// Failures the old rule stored for channels, stories and collections (it hid whole channels, and kept transient
+// errors): dropped once, since what they were can't be told apart now.
+export function migrateFailures(failed) {
+  const out = {};
+  for (const [id, f] of Object.entries(failed || {})) if (f?.type === 'movie' || f?.type === 'series') out[id] = f;
+  return out;
+}
+
 export function hiddenByFailure(failed, now = Date.now()) {
   const titles = new Set(), videos = new Set();
   for (const [titleId, f] of Object.entries(failed || {})) {
     const live = Object.entries(f.videos || {}).filter(([, at]) => now - at < FAIL_TTL_MS).map(([v]) => v);
     live.forEach(v => videos.add(v));
     if (!live.length) continue;
-    if (f.type !== 'series' || live.length >= SERIES_FAILS_TO_HIDE) titles.add(titleId);
+    // One video's failure never hides its channel, show or collection (QA bug 4): a movie is its own one item; a
+    // series needs three failed episodes; YouTube channels, stories and collections hide only the failed item.
+    if (f.type === 'movie' || (f.type === 'series' && live.length >= SERIES_FAILS_TO_HIDE)) titles.add(titleId);
   }
   return { titles, videos };
 }
@@ -142,7 +160,9 @@ export const youtubeHostFor = (settings) => (settings && settings.youtubeSignIn 
 // 8 titles of Kids Corner's curated Shows row, in catalog order.
 export const STARTER_COUNT = 8;
 export function starterShows(showsRow, { favs = [], pinned = [], hidden = new Set() } = {}) {
-  if (favs.length || pinned.length) return [];
+  // Only real shows' hearts and pins replace the starter set: a leftover song or lesson never empties My shows.
+  const item = (id) => /^kc\.(music|draw|piano)\./.test(String(id));
+  if (favs.some(f => !item(f.id)) || pinned.some(id => !item(id))) return [];
   return (showsRow || []).filter(t => t?.id && !hidden.has(t.id) && !String(t.id).startsWith('kc.music.')).slice(0, STARTER_COUNT);   // never a song
 }
 
@@ -167,11 +187,13 @@ export function newTitles(orderedIds, seen, now = Date.now()) {
 // YouTube sign-in status for the grown-ups screen. The app can't read YouTube's cookies; what it can see is
 // whether YouTube plays on youtube.com (the sign-in switch on) since the last sign-in attempt had ads. No such
 // play yet: unknown. Ad-free plays: likely signed in (Premium); any ad: likely not.
+export const YT_SIGNIN_PROOF = 3;
 export function ytSigninStatus({ plays = [], attempt = null, signInOn = false }) {
   if (!signInOn) return { state: 'off', plays: 0, withAds: 0 };
   const since = attempt?.at || 0;
   const seen = plays.filter(p => p.kind === 'youtube' && p.youtubeHost === 'youtube' && p.at > since && typeof p.ads === 'number');
   const withAds = seen.filter(p => p.ads > 0).length;
-  if (!seen.length) return { state: 'unknown', plays: 0, withAds: 0 };
-  return { state: withAds ? 'unlikely' : 'likely', plays: seen.length, withAds };
+  if (withAds) return { state: 'unlikely', plays: seen.length, withAds };
+  // "Probably yes" only after a few ad-free plays (review app-v6 S2): one or two prove little.
+  return { state: seen.length >= YT_SIGNIN_PROOF ? 'likely' : 'unknown', plays: seen.length, withAds: 0 };
 }

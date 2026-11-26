@@ -24,6 +24,15 @@ export function classifyAd({ state, contentDuration, progress, clockRunning }) {
 // Muted while an ad plays; content always gets its sound back unless the app itself asked for silence.
 export const desiredMute = ({ ad, appMuted }) => !!(ad || appMuted);
 
+// A YouTube error, as the app needs it: 'gone' (this video can't play here: removed, private, bad id, or embedding
+// off), 'setup' (the page sends no Referer: error 153), or 'transient' (a player fault, e.g. a mid-roll that failed
+// to load: error 5; and anything unknown, which is never blamed on the video).
+export function classifyYtError(code) {
+  if (code === 2 || code === 100 || code === 101 || code === 150) return 'gone';
+  if (code === 153) return 'setup';
+  return 'transient';
+}
+
 // The blocking layer covers the whole player. Holes, as fractions of the player box:
 // - during an ad, the whole bottom-right quadrant, from the first moment. YouTube puts Skip a fixed number of
 //   pixels from the box's bottom-right corner, so as a fraction it moves with the box's size (83-93 % down in a
@@ -113,6 +122,15 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
 
   // The player's own infoDelivery messages carry progressState (the ad's duration during an ad).
   let progress = null;
+  // Ownership: a session owns the host from setHandler(h) until release(). Anything YouTube starts while nobody
+  // owns it (a load that lands after the stop, or a start that ignored the stop) is stopped at once and muted, so
+  // nothing ever plays out of sight.
+  let owned = false, loadSeq = 0, unownedClock = null;
+  // Never rate-limited: a start that comes just after the stop must be stopped too, and stopVideo is idempotent.
+  const kill = () => {
+    try { player?.mute(); } catch { /* ignore */ }
+    try { player?.stopVideo(); } catch { /* ignore */ }
+  };
   addEventListener('message', e => {
     let frame = null;
     try { frame = player?.getIframe?.(); } catch { frame = null; }
@@ -120,6 +138,14 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
     let d = e.data;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
     const info = d && typeof d === 'object' ? d.info : null;
+    if (!owned) {
+      if (!info || typeof info !== 'object') return;
+      const clock = Number.isFinite(+info.currentTime) ? +info.currentTime : Number.isFinite(+info.progressState?.current) ? +info.progressState.current : null;
+      const moving = clock != null && unownedClock != null && clock > unownedClock + 0.05;
+      if (clock != null) unownedClock = clock;
+      if (info.playerState === 1 || info.playerState === 3 || moving) kill();
+      return;
+    }
     if (info && typeof info === 'object' && info.progressState && typeof info.progressState === 'object') {
       progress = { duration: +info.progressState.duration, allowSeeking: info.progressState.allowSeeking };
       handler?.onInfo?.(); // re-judge at once: an ad's first message must not wait for the next poll
@@ -133,7 +159,7 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
       playerVars: { ...YT_PLAYER_VARS, origin: location.origin },
       events: {
         onReady: () => { if (muted) { try { player.mute(); } catch { /* ignore */ } } ready = true; resolve(); },
-        onStateChange: e => handler?.onState?.(e.data),
+        onStateChange: e => { if (!owned) { if (e.data === 1 || e.data === 3) kill(); return; } handler?.onState?.(e.data); },
         onError: e => handler?.onError?.(e.data),
       },
     });
@@ -144,17 +170,22 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
     readyP,
     get ready() { return ready; },
     show,
-    setHandler(h) { handler = h; },
+    setHandler(h) { handler = h; owned = !!h; unownedClock = null; },
+    // The session is over: stop YouTube outright (also cancels a load still waiting for the player to be ready),
+    // and from now on kill anything it starts until the next setHandler.
+    release() { handler = null; owned = false; loadSeq++; unownedClock = null; muted = true; kill(); },
     // Call synchronously inside a tap when the player is ready, so iOS treats it as user-initiated.
     load(videoId, startSeconds = 0) {
-      const go = () => player.loadVideoById({ videoId, startSeconds });
+      const seq = ++loadSeq;
+      const go = () => { if (seq === loadSeq && owned) player.loadVideoById({ videoId, startSeconds }); };
       if (ready) { go(); return true; }
       readyP.then(go);
       return false;
     },
     // Diagnostic: show YouTube's own start screen (testbed ways-out check). Never used for her.
     cue(videoId) {
-      const go = () => player.cueVideoById({ videoId });
+      const seq = ++loadSeq;
+      const go = () => { if (seq === loadSeq && owned) player.cueVideoById({ videoId }); };
       if (ready) { go(); return true; }
       readyP.then(go);
       return false;
@@ -164,7 +195,7 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
     shield(on, hole = null) { shieldOn = !!on; layout(hole); },
     progress() { return progress; },
     resetProgress() { progress = null; },
-    destroy() { handler = null; try { player?.destroy(); } catch { /* ignore */ } container.replaceChildren(); },
+    destroy() { handler = null; owned = false; loadSeq++; try { player?.destroy(); } catch { /* ignore */ } container.replaceChildren(); },
     mute() { muted = true; try { player?.mute(); } catch { /* ignore */ } },
     unMute() { muted = false; try { player?.unMute(); } catch { /* ignore */ } },
     isMuted() { try { return !!player?.isMuted(); } catch { return null; } },

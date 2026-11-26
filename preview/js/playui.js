@@ -107,6 +107,7 @@ export function createPlayUI(app) {
     await app.store.putProgress(rec);
   }
 
+  const windowSize = () => `${innerWidth}x${innerHeight} @${devicePixelRatio}x ${matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'home screen' : 'tab'}`;
   async function logPlay(extra, c = ctx) {
     if (!c) return;                       // capture now: ctx may be gone after the await below
     const clean = sanitizeReport(extra, await reportSecrets());
@@ -116,6 +117,7 @@ export function createPlayUI(app) {
       titleId: c.data.title.id, titleName: c.data.title.name, kind: c.item.kind,
       episodeLabel: c.item.season != null ? `S${c.item.season}E${c.item.episode}` : (c.item.episodeTitle || '').slice(0, 60),
       watchedSec: Math.round(c.watched), source: app.player.source,
+      viewport: windowSize(),   // her iPad's real window size, never recorded anywhere else
     });
   }
 
@@ -175,6 +177,7 @@ export function createPlayUI(app) {
       position: startAt, duration: 0, paused: false, ready: false, lastTick: 0, lastPos: startAt, lastSave: 0, watched: 0 };
     layer.dataset.cat = app.bedtime ? 'bedtime' : cat;
     toyLayer.dataset.cat = layer.dataset.cat;
+    delete toyLayer.dataset.progress;
     show(true);
     setRail();
     if (from) { from.classList.add('launch'); setTimeout(() => from.classList.remove('launch'), 400); }
@@ -194,7 +197,17 @@ export function createPlayUI(app) {
 
     const my = ctx;
     const on = (type, fn) => s.addEventListener(type, (e) => { if (ctx === my) fn(e.detail || {}); });
-    on('progress', (d) => { my.lastProgress = d.fraction; my.toy?.setProgress(d.fraction); });
+    // The transcode path (player contract): 'decoder' (ffmpeg.wasm downloading and compiling, the first converted file
+    // of a session) and 'convert' (seconds converted ahead) share the toy half and half, so it is full only when the
+    // video can start; the toy stays up through both. Progress never moves back.
+    on('progress', (d) => {
+      if (d.stage === 'decoder' || d.stage === 'convert') my.stages = { ...my.stages, [d.stage]: d.fraction };
+      const st = my.stages;
+      const f = !st ? d.fraction : st.decoder != null ? 0.5 * st.decoder + 0.5 * (st.convert || 0) : (st.convert ?? d.fraction);
+      my.lastProgress = Math.max(my.lastProgress || 0, Math.min(1, f));
+      toyLayer.dataset.progress = String(my.lastProgress);
+      my.toy?.setProgress(my.lastProgress);
+    });
     on('ready', () => { if (my.item.kind === 'torbox') app.torboxKeyProven = true; playingNow(my); onReady(my); });   // proof the TorBox key works this session
     on('time', (d) => onTime(my, d));
     on('paused', (d) => { autoHide.setPlaying(false); onPaused(my, d); });
@@ -391,7 +404,7 @@ export function createPlayUI(app) {
     const oneStory = app.bedtime && app.settings.bedtime.oneStory;
     if (oneStory) app.usage = { ...app.usage, goodnight: true };
     await app.saveUsage();
-    logPlay({ endReason: 'ended', ...(d.nearEnd ? { endedNearEnd: true, ytError: d.reason } : {}) });
+    logPlay({ endReason: 'ended', ...(d.nearEnd ? { endedNearEnd: true, [/^yt_/.test(String(d.reason)) ? 'ytError' : 'nearEndReason']: d.reason } : {}) });
     teardown();
     ctx = null; app.playing = false;
     const action = onEpisodeEnd(app.usage, app.settings);
@@ -406,7 +419,7 @@ export function createPlayUI(app) {
       if (done) return; done = true;
       overlay.classList.remove('open'); overlay.innerHTML = '';
       app.justEnded = action === 'goodbye' && !oneStory ? c.item.videoId : null;
-      if (action === 'rest' || oneStory) { app.go('#/'); app.render(); }
+      if (action === 'rest' || oneStory) app.go('#/');   // go() draws it once
       else if (isColl(c)) app.go(COLLECTIONS[c.data.title.id].route);      // its own page, that video checked with "again"
       else app.go(`#/t/${c.data.title.type}/${c.data.title.id}`);
     };
@@ -425,7 +438,8 @@ export function createPlayUI(app) {
     else if (failureCounts(c.item.kind, { ...verdict, reasons })) {   // a transient YouTube error hides nothing (QA bug 4)
       // A song that fails hides only itself, never the whole Music page.
       const failTitle = isColl(c) ? c.item.videoId : c.data.title.id;
-      app.failed = recordFailure(app.failed, { titleId: failTitle, videoId: c.item.videoId, type: c.data.title.type }, reasons, Date.now(), { keyProven });
+      const label = `${c.data.title.name || ''}${c.item.season != null ? ` S${c.item.season}E${c.item.episode}` : ''}${c.item.episodeTitle ? ` · ${c.item.episodeTitle}` : ''}`.trim();
+      app.failed = recordFailure(app.failed, { titleId: failTitle, videoId: c.item.videoId, type: c.data.title.type, label }, reasons, Date.now(), { keyProven });
       await app.store.saveFailed(app.failed);
     }
     logPlay({ endReason: 'failed', failures: reasons }, c);

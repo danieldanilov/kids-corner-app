@@ -4,7 +4,7 @@ import { normaliseTorrentioConfig } from './secrets.js';
 import { checkConnection } from './connection.js';
 import { setSecretList } from './main.js';
 import { CATEGORIES, titleClipId } from './data.js';
-import { todayKey, ytSigninStatus, YT_SIGNIN_PROOF } from './rules.js';
+import { todayKey, ytSigninStatus, YT_SIGNIN_PROOF, hiddenEpisodes, unfailVideo } from './rules.js';
 import { ICONS } from './art.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -62,7 +62,7 @@ async function showPin(app, { change = false } = {}) {
       if (!first) { first = pin; entry = ''; paint(); msg.textContent = 'Once more to confirm'; return; }
       if (first !== pin || !validPinFormat(pin)) { first = null; entry = ''; paint(); shake(); msg.textContent = "They didn't match. Choose again."; return; }
       await app.store.savePin(await makePinRecord(pin));   // the only place a PIN is ever replaced
-      close(); app.parentOpen = true; app.go('#/grownups'); app.render(); return;
+      close(); app.parentOpen = true; app.go('#/grownups'); return;   // go() draws it once; a second draw would swallow the next tap
     }
     const ok = await checkPin(pin, rec);
     state = registerAttempt(state, ok, Date.now());
@@ -133,6 +133,7 @@ export async function renderParent(view, app) {
 
   const voiceMissing = allTitles.filter(t => !app.sound.hasTitle(titleClipId(t.id)));
   const failedIds = [...hid.failedTitles];
+  const failedEps = hiddenEpisodes(app.failed, Date.now(), name);   // single episodes and videos, each by name
 
   view.className = 'screen parent';
   view.innerHTML = `<div class="parent-wrap">
@@ -178,6 +179,7 @@ export async function renderParent(view, app) {
       <div class="title-list" data-list></div>
       ${s.hidden.length ? `<h3>Hidden by you</h3><ul class="plain">${s.hidden.map(id => `<li>${esc(name(id))} <button class="btn small" data-a="unhide" data-id="${esc(id)}">Unhide</button></li>`).join('')}</ul>` : ''}
       ${failedIds.length ? `<h3>Hidden because no stream played</h3><ul class="plain">${failedIds.map(id => `<li>${esc(name(id))} <button class="btn small" data-a="unfail" data-id="${esc(id)}">Try again</button></li>`).join('')}</ul>` : ''}
+      ${failedEps.length ? `<h3>Episodes hidden because they didn't play</h3><ul class="plain">${failedEps.map(e => `<li>${esc(e.label)} <button class="btn small" data-a="unfail-ep" data-id="${esc(e.titleId)}" data-v="${esc(e.videoId)}">Try again</button></li>`).join('')}</ul>` : ''}
       ${s.pinned.length ? `<h3>Pinned to My shows</h3><ul class="plain">${s.pinned.map(id => `<li>${esc(name(id))} <button class="btn small" data-a="unpin" data-id="${esc(id)}">Unpin</button></li>`).join('')}</ul>` : ''}
       ${s.newRow.length ? `<h3>In the New row</h3><ul class="plain">${s.newRow.map(t => `<li>${esc(t.name)} <button class="btn small" data-a="unnew" data-id="${esc(t.id)}">Remove</button></li>`).join('')}</ul>` : ''}
     </section>
@@ -188,6 +190,7 @@ export async function renderParent(view, app) {
     </section>
 
     <section><h2>Playback report</h2>
+      <p class="summary" data-diag="viewport">This screen: ${innerWidth} × ${innerHeight} at ${devicePixelRatio}x, ${matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'from the Home Screen' : 'in a browser tab'}.</p>
       <p class="summary">TorBox plays: ${tb.length}. Started: ${started.length}. Median time to first picture: ${fmtS(median)}. All streams failed: ${failedPlays}. Plays that needed a fallback: ${tb.filter(p => (p.fallbacks || []).length).length}.</p>
       <div class="table-wrap"><table class="report"><tr><th>When</th><th>Title</th><th>Start</th><th>Size</th><th>Picked</th><th>Fallbacks</th><th>Path</th><th>Smooth</th><th>End</th></tr>
       ${plays.slice(0, 200).map(p => `<tr class="${p.endReason === 'failed' ? 'bad' : ''}"><td>${when(p.at)}</td><td>${esc(p.titleName)} ${esc(p.episodeLabel || '')}</td><td>${fmtS(p.ttffMs)}</td><td>${p.sizeMB ? esc(p.sizeMB) + ' MB' : fmtMB(p.fileSize)}</td>
@@ -306,6 +309,7 @@ export async function renderParent(view, app) {
       case 'new': if (meta) await set('newRow', [...app.settings.newRow, { id, type: meta.type, name: meta.name, poster: meta.poster, posterShape: meta.posterShape }]); paintList(); return;
       case 'unnew': await set('newRow', app.settings.newRow.filter(x => x.id !== id)); return rerender();
       case 'unfail': { const f = { ...app.failed }; delete f[id]; app.failed = f; await app.store.saveFailed(f); return rerender(); }
+      case 'unfail-ep': { app.failed = unfailVideo(app.failed, id, btn.dataset.v); await app.store.saveFailed(app.failed); return rerender(); }
       case 'copy-report': {
         const text = plays.map(p => [when(p.at), p.titleName, p.episodeLabel, fmtS(p.ttffMs), p.sizeMB ? p.sizeMB + ' MB' : fmtMB(p.fileSize), p.path || p.kind, `fallbacks ${(p.fallbacks || []).length}`, p.endReason, (p.failures || []).join(' ')].join(' | ')).join('\n');
         try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; } catch { btn.textContent = 'Copy failed'; }

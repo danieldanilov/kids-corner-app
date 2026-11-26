@@ -57,6 +57,42 @@ app.catOf = (id) => app.home[id] || null;
 app.speak = (key) => app.sound.say(key);
 app.effect = (name) => app.sound.effect(name);
 
+// Home is one iPad composition per orientation (spec 1, Window sizes): a 1194 x 834 (or 834 x 1194) frame, scaled
+// down to fit a narrower or shorter window and centred across its width. The height that counts is what the rows
+// need (the last row's bottom, 758 landscape and 1032 portrait, over 0.98), and a scale above 0.98 is exactly 1, so
+// her iPad is never resampled even if the status bar or home indicator take a few points (review app-v10 S1).
+export const HOME_FRAME = { landscape: [1194, 774], portrait: [834, 1054] };   // frame width, height the rows need
+function fitHome() {
+  const root = document.documentElement;
+  const [fw, need] = HOME_FRAME[isPortrait() ? 'portrait' : 'landscape'];
+  const s0 = Math.min(1, innerWidth / fw, innerHeight / need), s = s0 > 0.98 ? 1 : s0;
+  root.style.setProperty('--home-scale', String(s));
+  root.style.setProperty('--home-left', `${(innerWidth - fw * s) / 2}px`);
+  root.classList.toggle('home-scaled', s < 1);
+}
+const isPortrait = () => matchMedia('(orientation: portrait)').matches;
+
+// Home's rows are paged for the orientation they were drawn in (QA #25). When it turns, home is re-paged in place
+// (the same view, no page animation, each row's page kept), once no finger is on the glass, so a tap is never
+// taken mid-gesture.
+let drawnPortrait = isPortrait(), repageWanted = false, fingerDown = false;
+function repageHome() {
+  repageWanted = false;
+  const view = document.getElementById('view');
+  if (view?.classList.contains('home')) renderHome(view, app);
+}
+function onWindowChange() {
+  fitHome();
+  if (isPortrait() === drawnPortrait) return;
+  drawnPortrait = isPortrait();
+  if (fingerDown) repageWanted = true; else repageHome();
+}
+addEventListener('pointerdown', () => { fingerDown = true; }, true);
+for (const t of ['pointerup', 'pointercancel']) addEventListener(t, () => { fingerDown = false; if (repageWanted) setTimeout(repageHome, 0); }, true);   // after her click lands
+fitHome();
+addEventListener('resize', onWindowChange);
+addEventListener('orientationchange', onWindowChange);
+
 function applyLook() {
   const root = document.documentElement;
   root.dataset.theme = app.bedtime ? 'bedtime' : app.settings.theme === 'light' ? 'light' : 'dark';   // dark unless the grown-up chose Light

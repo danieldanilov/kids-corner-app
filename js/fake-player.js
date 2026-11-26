@@ -34,7 +34,9 @@ export function createFakePlayer({ fake, ytContainer = null }) {
         });
       }
       const adMs = yt ? (cfg.adMs || 0) : 0;
-      let inAd = false, adPaused = false, stuck = false;
+      let inAd = false, adPaused = false, stuck = false, retryAdLeft = 0, retryAdFrom = 0, retryAdTimer = null;
+      // The retry's ad runs out unless it is held paused (the real player holds an ad paused: 'paused' {ad:true}).
+      const runRetryAd = () => { clearTimeout(retryAdTimer); retryAdTimer = setTimeout(() => { retryAdLeft = 0; adEnd(); later(200, () => { if (playing) emit('resumed'); }); }, retryAdLeft); timers.push(retryAdTimer); };
       const adStart = () => { inAd = true; skipHole(true); if (ytAdMute) setMuted(true); emit('ad', { active: true }); };
       const adEnd = () => { inAd = false; skipHole(false); if (ytAdMute) setMuted(false); emit('ad', { active: false }); };
       // cfg.midAd {afterMs, ms}: an ad partway into the content (no 'ready' after it, only 'ad' false).
@@ -54,6 +56,14 @@ export function createFakePlayer({ fake, ytContainer = null }) {
         emit('report', { ttffMs: loadMs, fileSize: 141000000, container: 'mp4', path: 'direct', candidate: { name: '[TB+] Torrentio 1080p', filename: 'Fake.S01E01.mp4', url: 'https://cdn.example/x' }, fallbacks: [{ reason: 'probe-duration', filename: 'Wrong.mkv' }], failures: [] });
         // cfg.stuckAt ms after the start: YouTube buffers for good (no more time) and ignores pauseVideo() (review S1).
         if (yt && cfg.stuckAt != null) later(cfg.stuckAt, () => { stuck = true; emit('stalled', {}); });
+        // cfg.stuckMs: the stall clears after that long and YouTube plays on (it never took the pause): 'resumed'.
+        // cfg.retryAd {ms, ignorePause}: instead, the player's error retry reloads the video and its pre-roll starts by
+        // itself (QA #24); the ad is held while paused unless ignorePause, then 'ad' false and 'resumed'.
+        if (yt && cfg.stuckAt != null && cfg.stuckMs != null) later(cfg.stuckAt + cfg.stuckMs, () => {
+          stuck = false;
+          if (!cfg.retryAd) { if (playing) emit('resumed'); return; }
+          playing = true; retryAdLeft = cfg.retryAd.ms; retryAdFrom = Date.now(); runRetryAd(); adStart();   // the app may pause it at once
+        });
         const tick = setInterval(() => {
           if (!playing || stuck) return;
           pos += 0.5;
@@ -70,12 +80,28 @@ export function createFakePlayer({ fake, ytContainer = null }) {
         timers.push(tick);
       });
       globalThis.__kcFakeSession = t;   // tests can act as YouTube's own pause (a touch on the iframe)
+      // Live getters (Object.assign would copy their values once): s.inAd as the real player has it, and two for tests.
+      Object.defineProperties(t, {
+        inAd: { get: () => inAd, enumerable: true },
+        stuck: { get: () => stuck, enumerable: true },
+        playing: { get: () => playing && !stuck, enumerable: true },
+        adPaused: { get: () => inAd && adPaused, enumerable: true },
+      });
       return Object.assign(t, {
-        get inAd() { return inAd; },
-        get stuck() { return stuck; },
         // In an ad (player contract): pause emits 'paused' {ad:true}; resume carries the ad on and emits 'ad' again.
-        pause() { if (stuck) return; if (inAd) { adPaused = true; emit('paused', { ad: true }); return; } if (playing) { playing = false; emit('paused', {}); } },
-        resume() { if (inAd) { adPaused = false; emit('ad', { active: true }); return; } playing = true; emit('resumed'); },   // like the real player
+        pause() {
+          if (stuck) return;
+          if (inAd) {
+            if (cfg.retryAd?.ignorePause && retryAdLeft) return;   // a player that can't hold this ad
+            if (retryAdLeft) { clearTimeout(retryAdTimer); retryAdLeft -= Date.now() - retryAdFrom; }
+            adPaused = true; emit('paused', { ad: true }); return;
+          }
+          if (playing) { playing = false; emit('paused', {}); }
+        },
+        resume() {
+          if (inAd) { adPaused = false; emit('ad', { active: true }); if (retryAdLeft > 0) { retryAdFrom = Date.now(); runRetryAd(); } return; }
+          playing = true; emit('resumed');
+        },   // like the real player
         seekBy(d) { (globalThis.__kcSeekBy = globalThis.__kcSeekBy || []).push(d); pos = Math.max(0, Math.min(lengthS, pos + d)); return pos; },
         position() { return pos; },
         seek(s) { pos = Math.max(0, Math.min(lengthS, s)); emit('time', { position: pos, duration: lengthS }); },

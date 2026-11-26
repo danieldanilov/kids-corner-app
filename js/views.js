@@ -84,14 +84,14 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
   };
 
   view.className = 'screen home';
-  view.innerHTML = `
+  view.innerHTML = `<div class="home-frame">
     <header class="home-top">
       <button class="pom-tile tapable" data-act="pom" aria-label="Pom">${pom(app.bedtime ? 'night' : 'day', 'breathe')}</button>
       ${chips.map(c => chipHtml(c, app)).join('')}
       ${app.bedtime ? '' : `<button class="chip srch tapable" data-act="search" aria-label="Search"><span class="art">${ICONS.search}</span><span class="word">Search</span></button>`}
     </header>
     ${lockHtml()}${dots(app)}${app.preview ? '<span class="preview-tag" aria-hidden="true">preview</span>' : ''}
-    <section class="rows">${rows.map(rowHtml).join('')}</section>`;
+    <section class="rows">${rows.map(rowHtml).join('')}</section></div>`;
 
   view.onclick = (e) => {
     const b = e.target.closest('[data-act]');

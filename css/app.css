@@ -90,6 +90,10 @@ svg { display: block; }
 @keyframes ring-fill { to { --fill: 100%; } }
 
 /* ---------- home ---------- */
+/* One iPad composition per orientation (spec 1, Window sizes): main.js sets the scale (under 1 only when the window is
+   narrower than the iPad) and the left margin that centres it. At the iPad's size it is the window, untransformed. */
+.home-frame { position: absolute; top: 0; left: var(--home-left, 0px); width: 1194px; height: 834px; }
+:root.home-scaled .home-frame { transform: scale(var(--home-scale, 1)); transform-origin: 0 0; }
 .preview-tag { position: absolute; top: 84px; right: 22px; font-size: 11px; font-weight: 700; color: var(--ink-2); opacity: .7; pointer-events: none; }
 .home-top { position: absolute; top: 24px; left: var(--gutter); right: var(--gutter); display: flex; gap: 6px; }   /* spec 4.1 v5: Pom, 7 chips, search, 6 px gaps */
 .chip.srch { --c: var(--card); --l: var(--srch-lip); color: var(--ink); }
@@ -284,7 +288,7 @@ svg { display: block; }
 /* Position bar (4.6): 480 x 12, its top 120 px below the centre, time under it; paused only, never tappable. */
 .pos-bar { display: none; position: absolute; left: calc(50% - 240px); top: calc(50% + 120px); width: 480px; pointer-events: none; }
 #player.paused .pos-bar:not(.nodur) { display: block; }
-#player.ad-paused .rail-btn[data-r="back15"], #player.ad-paused .rail-btn[data-r="fwd15"], #player.ad-paused .skip-pop, #player.ad-paused .pos-bar { display: none; }   /* QA #14 */
+#player.ad-paused .rail-btn[data-r="back15"], #player.ad-paused .rail-btn[data-r="fwd15"], #player.ad-paused .skip-pop, #player.paused.ad-paused .pos-bar:not(.nodur) { display: none; }   /* QA #14 (the bar's rule outranks the plain .paused one) */
 .pos-bar .trk { height: 12px; border-radius: 6px; background: rgba(255, 255, 255, .3); overflow: hidden; }
 .pos-bar .fil { height: 100%; width: 0; background: #fff; border-radius: 6px; transition: width .3s ease-out; }
 [data-motion="reduced"] .pos-bar .fil { transition: none; }
@@ -413,21 +417,10 @@ table.report tr.bad td { color: #B4552F; }
 .sempty .pom { width: 200px; height: 200px; }
 .sempty .lens .icon { width: 64px; height: 64px; color: var(--ink-2); }
 
-/* ---------- a landscape window too narrow for the header row (Pom and 7 chips need 1002 px plus the gutters) ----------
-   The home header takes the portrait grid, so every chip stays inside the window and clear of the rows. */
-@media (orientation: landscape) and (max-width: 1065px) {
-  .home .lock { top: 18px; right: 28px; width: 56px; height: 56px; }
-  .home .show-dots { top: 30px; right: 100px; }
-  .home-top { top: 84px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-  .home-top .pom-tile, .home-top .chip { width: auto; }
-  .home-top .chip[data-id="learn"] { position: static; }
-  .home-top .chip.srch { position: static; grid-column: 6; }
-  .home .rows { top: 380px; right: var(--gutter); }
-}
-
 /* ---------- portrait (834 x 1194) ---------- */
 @media (orientation: portrait) {
   :root { --gutter: 24px; }
+  .home-frame { width: 834px; height: 1194px; }
   .lock { top: 18px; right: 24px; }
   .show-dots { top: 84px; right: 26px; }
   .home-top { top: 84px; right: var(--gutter); display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }   /* 6 cells across 24-810, rows at y 84 and 224 */

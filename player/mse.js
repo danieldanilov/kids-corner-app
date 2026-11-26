@@ -11,12 +11,16 @@ export function isTypeSupported(mime) {
   try { return !!MS && MS.isTypeSupported(mime); } catch { return false; }
 }
 
-export function createMseSink(video, mime, { audioMime = null, onEvicted, onStreamingChange } = {}) {
+// durationSec: the probed length. Without a duration WebKit clamps currentTime to the end of what's appended, so
+// a seek past it sticks there for good even after the data arrives; with an unknown length, ensureDuration(t)
+// stretches it before each seek.
+export function createMseSink(video, mime, { audioMime = null, onEvicted, onStreamingChange, durationSec = null } = {}) {
   const MS = mediaSourceClass();
   if (!MS) throw new Error('no MediaSource');
   const managed = MS === globalThis.ManagedMediaSource;
   const ms = new MS();
   let sb = null, asb = null, url = null, closed = false, streaming = true;
+  let dropped = []; // ranges we removed ourselves: their bufferedchange is not the browser evicting
   const queue = [];
   let pumping = false;
 
@@ -27,12 +31,14 @@ export function createMseSink(video, mime, { audioMime = null, onEvicted, onStre
         sb = ms.addSourceBuffer(mime);
         sb.mode = 'segments';
         if (audioMime) asb = ms.addSourceBuffer(audioMime); // audio/mpeg: sequence mode, placed by timestampOffset
+        if (Number.isFinite(durationSec) && durationSec > 0) { try { ms.duration = durationSec; } catch { /* left to the appends */ } }
         if (managed) {
           sb.addEventListener('bufferedchange', e => {
             const removed = e.removedRanges;
             if (!removed || !removed.length) return;
             const t = video.currentTime;
-            for (let i = 0; i < removed.length; i++) if (removed.end(i) > t + 0.5) { onEvicted?.(Math.max(t, removed.start(i))); break; }
+            const ours = i => dropped.some(([a, b]) => removed.start(i) >= a - 0.5 && removed.end(i) <= b + 0.5);
+            for (let i = 0; i < removed.length; i++) if (removed.end(i) > t + 0.5 && !ours(i)) { onEvicted?.(Math.max(t, removed.start(i))); break; }
           });
         }
         resolve();
@@ -73,7 +79,20 @@ export function createMseSink(video, mime, { audioMime = null, onEvicted, onStre
     try {
       await opened;
       while (queue.length && !closed) {
-        const { data, which, offset, resolve, reject } = queue.shift();
+        const { data, which, offset, resolve, reject, keep } = queue.shift();
+        if (keep) { // drop whole buffered ranges lying entirely outside [keep.from, keep.to]
+          try {
+            for (const b of [sb, asb]) {
+              if (!b) continue;
+              await waitIdle();
+              const r = b.buffered, gone = [];
+              for (let i = 0; i < r.length; i++) if (r.end(i) < keep.from || r.start(i) > keep.to) gone.push([r.start(i), r.end(i)]);
+              for (const [s0, e0] of gone) { dropped.push([s0, e0]); if (dropped.length > 20) dropped.shift(); b.remove(s0, e0); await waitIdle(); }
+            }
+          } catch { /* the buffer went away */ }
+          resolve();
+          continue;
+        }
         const target = which === 'audio' ? asb : sb;
         try {
           await waitIdle();
@@ -99,6 +118,26 @@ export function createMseSink(video, mime, { audioMime = null, onEvicted, onStre
       return new Promise((resolve, reject) => { queue.push({ data, which, offset, resolve, reject }); pump(); });
     },
     get split() { return !!asb; },
+    // A seek to t that starts a new run: buffered ranges far from t are dropped first (40 seeks around a long file
+    // otherwise pile ranges up in the media process: its memory went 96 -> 245 MB). Whole ranges only, queued
+    // ahead of the new run's segments.
+    dropFarFrom(t, behind = 30, ahead = 180) {
+      if (closed) return Promise.resolve();
+      return new Promise(resolve => { queue.push({ keep: { from: t - behind, to: t + ahead }, resolve, reject: resolve }); pump(); });
+    },
+    // Make sure a seek to t isn't clamped: true when the duration already reaches t (or was stretched to it now);
+    // false while a buffer is updating, and then whenIdle() is the moment to try again.
+    ensureDuration(t) {
+      try {
+        if (!(t > 0) || closed || ms.readyState === 'closed' || !sb) return true;
+        const d = ms.duration;
+        if (Number.isFinite(d) && d >= t + 0.5) return true;
+        if (sb.updating || asb?.updating) return false;
+        ms.duration = t + 1;
+        return true;
+      } catch { return true; } // a torn-down source: nothing to stretch
+    },
+    whenIdle: () => waitIdle(),
     debugRanges() {
       const r = b => { if (!b) return null; const out = []; for (let i = 0; i < b.buffered.length; i++) out.push([+b.buffered.start(i).toFixed(3), +b.buffered.end(i).toFixed(3)]); return out; };
       return { main: r(sb), audio: r(asb), audioMode: asb?.mode, readyState: video.readyState };

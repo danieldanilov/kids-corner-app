@@ -70,7 +70,9 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     const paged = r.items.length > slots;
     const per = paged ? slots - 1 : slots;
     const pages = Math.max(1, Math.ceil(r.items.length / per));
-    const page = Math.min(app.rowPages[r.key] || 0, pages - 1);
+    // A row remembers the first poster she paged to, not a page number, so a turn (5 posters a page in landscape, 3
+    // in portrait) shows the page that holds it (QA #27).
+    const page = Math.min(Math.floor((app.rowStart[r.key] || 0) / per), pages - 1);
     const start = page * per;
     const last = page === pages - 1;
     const vis = r.items.slice(start, start + per);
@@ -79,7 +81,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     return `<div class="row" data-row="${r.key}">
       <button class="sign tapable" data-act="sign" data-key="${r.sign}" aria-label="${r.key}"><span class="art">${ROW_ART[r.key]}</span><span class="word">${ROW_LABEL[r.key]}</span></button>
       ${tiles}${ghost}
-      ${paged ? `<button class="poster arrow-tile tapable" data-act="rowpage" data-row="${r.key}" data-pages="${pages}" aria-label="${last ? 'back to the start' : 'more'}">${last ? ICONS.left : ICONS.right}</button>` : ''}
+      ${paged ? `<button class="poster arrow-tile tapable" data-act="rowpage" data-row="${r.key}" data-next="${last ? 0 : start + per}" aria-label="${last ? 'back to the start' : 'more'}">${last ? ICONS.left : ICONS.right}</button>` : ''}
     </div>`;
   };
 
@@ -106,8 +108,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     else if (act === 'sign') { app.effect('sign'); app.speak(b.dataset.key); b.classList.remove('nod'); void b.offsetWidth; b.classList.add('nod'); }
     else if (act === 'rowpage') {
       app.effect('arrow');
-      const cur = app.rowPages[b.dataset.row] || 0;
-      app.rowPages[b.dataset.row] = cur + 1 >= +b.dataset.pages ? 0 : cur + 1;
+      app.rowStart[b.dataset.row] = +b.dataset.next || 0;
       renderHome(view, app);
     } else if (act === 'title') { app.effect('poster'); app.go(`#/t/${b.dataset.type}/${b.dataset.id}`); }
     else if (act === 'resume') { app.effect('poster'); app.playui.resume(b.dataset.key, b); }

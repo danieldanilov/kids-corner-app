@@ -2,6 +2,8 @@
 // import { createPlayer } from './player/index.js'
 
 import { rankStreams } from './select.js';
+import { createDecoders } from './decoders.js';
+import { FFMPEG_CODECS } from './decoders-ffmpeg.js';
 import { decide } from './probe.js';
 import { fetchStreams, fetchCinemeta, resolveViaWorker, scrubSecrets, listOutcome } from './sources.js';
 import { createMseSink, isTypeSupported, mediaSourceClass } from './mse.js';
@@ -20,7 +22,11 @@ export const DEFAULTS = {
   warmMaxAgeMs: 30 * 60e3,
   ytEndGuardSec: 0.6,    // stop this close to the end so YouTube's end panel never shows
   ytNeedsTapMs: 2500,
+  transcodeHoldSec: 6,   // a transcode starts playing once this much is converted ahead (or the file is done)
   ytNearEndSec: 15,      // a YouTube error this close to the end ends the video as watched ('ended' {nearEnd:true})
+  nearEndSec: 60,        // a TorBox file that breaks this close to the end, with no other file left, ends as watched
+  ytStallEndSec: 5,      // buffering this close to the end ...
+  ytStallEndMs: 8000,    // ... for this long ends the video as watched ('ended' {nearEnd:true, reason:'stall'})
   ytShield: false,       // blocking layer over the YouTube player (Boss ruling 2026-11-25). Off until the app
                          // handles 'shield-tap': with it on, a tap no longer reaches YouTube (so no tap-to-pause)
   ytAdMute: true,        // mute while an ad plays; content always gets its sound back
@@ -58,8 +64,10 @@ function createEngineClient() {
   };
 }
 
+// What the transcode path can decode on this device (the worker holds the decoders; the wasm loads there on first use).
+const localDecoders = createDecoders({ wasm: { has: c => FFMPEG_CODECS.has(c) } });
 function caps() {
-  return { isTypeSupported, av1: isTypeSupported('video/mp4; codecs="av01.0.08M.08"') };
+  return { isTypeSupported, av1: isTypeSupported('video/mp4; codecs="av01.0.08M.08"'), canDecode: c => localDecoders.has(c) };
 }
 
 // --- player ----------------------------------------------------------------------------------
@@ -127,12 +135,9 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   async function listCandidates(item, secrets, emit) {
     emit('progress', { fraction: null, stage: 'list' });
     const it = { ...item, lang: item.lang || lang };
-    const needSeries = it.type === 'series' && (!it.seasonCount || !it.episodeName);
-    if (!(it.runtimeMin > 0) || !it.year || needSeries) {
-      try {
-        const m = await fetchCinemeta(it);
-        it.runtimeMin ||= m.runtimeMin; it.year ||= m.year; it.seasonCount ||= m.seasonCount; it.episodeName ||= m.episodeName;
-      } catch { /* keep: the guards then treat the unknowns strictly */ }
+    // The runtime ranks files by bitrate and checks the probed length (both soft); nothing else is needed.
+    if (!(it.runtimeMin > 0)) {
+      try { const m = await fetchCinemeta(it); it.runtimeMin ||= m.runtimeMin; } catch { /* unknown: no bitrate term, no length check */ }
     }
     let streams;
     try { streams = await fetchStreams(secrets.torrentioConfig, it); } catch (error) {
@@ -159,11 +164,12 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         engine.route(id, msg => {
           if (msg.op === 'probed') resolve(msg.info);
           else if (msg.op === 'error') reject(new Error('probe:' + msg.error));
+          else if (msg.op === 'decoder') emit('progress', { fraction: msg.fraction, stage: 'decoder' });
         });
         engine.probe(id, r.url);
       }).catch(e => { engine.close(id); throw e; });
-      const d = decide(info, it, caps());
-      if (!d.ok) { engine.close(id); const e = new Error(d.reason); e.durationCheck = d.durationCheck; throw e; }
+      const d = decide(info, it, caps(), { lenient: !!c.lenient });
+      if (!d.ok) { engine.close(id); const e = new Error(d.reason); e.durationCheck = d.durationCheck; e.soft = !!d.soft; throw e; }
       return { c, url: r.url, info, d, id, release: () => engine.close(id) };
     };
     return { tryOne, resolveC };
@@ -222,7 +228,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
             else if (msg.op === 'done') { segments.stoppedAt = msg.result?.endSec; res(); }
             else if (msg.op === 'error') res();
           });
-          engine.remux(win.id, runId, { audioIndex: win.d.audioIndex, startSec: 0, endSec: o.prefetchSec, split: !!win.d.split });
+          engine.remux(win.id, runId, { audioIndex: win.d.audioIndex, startSec: 0, endSec: o.prefetchSec, split: !!win.d.split, audioMp3: !!win.d.audioMp3 });
         });
       }
       return { it, ranked, skipped, win, segments, fallbacks };
@@ -327,7 +333,37 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     };
     let stallTimer1 = null, stallTimer2 = null, stalledEmitted = false;
     const clearStall = () => { clearTimeout(stallTimer1); clearTimeout(stallTimer2); stallTimer1 = stallTimer2 = null; };
+    // A run that fails after playback started (a damaged stretch the transcoder couldn't get past, a dropped
+    // connection): what's buffered plays out, then the next file takes over from the same spot. With no file left
+    // the play ends: as watched near the end, else with failed-all. Never a frame held for good.
+    let broken = null;
+    const onBroken = reason => {
+      if (broken || isStopped()) return;
+      broken = reason;
+      const end = bufferedEnd();
+      if (end == null || end - video.currentTime < 0.5) failOver();
+    };
+    async function failOver() {
+      const reason = broken;
+      if (!reason || isStopped() || !state.win) return;
+      broken = null;
+      clearStall();
+      const at = video.currentTime;
+      rep.fallbacks.push({ rank: state.win.c.rank, reason: 'midplay:' + reason });
+      learned.failed(state.win.c.key);
+      media?.teardown(); media = null; state.win.release(); state.win = null;
+      if (state.nextIdx >= state.ranked.length) {
+        const dur = rep.durationCheck?.probedSec || 0;
+        rep.failures.push('midplay:' + reason);
+        if (dur > 0 && at >= dur - o.nearEndSec) { rep.endedNearEnd = true; finish('ended', null, { nearEnd: true, reason: 'broken' }); }
+        else finish('failed-all', ['midplay:' + reason]);
+        teardownAll();
+        return;
+      }
+      await runFrom(state.nextIdx, at);
+    }
     const onWaiting = () => {
+      if (broken) { failOver(); return; }
       if (!rep.ttffMs || stallTimer1) return;
       media?.onWaiting?.();
       stallTimer1 = setTimeout(() => { stalledEmitted = true; rep.stalls++; emit('stalled', {}); }, o.stallNoticeMs);
@@ -346,7 +382,9 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     const onProgress = () => {
       if (rep.ttffMs || !media) return;
       const end = bufferedEnd();
-      if (end != null) emit('progress', { fraction: Math.min(1, Math.max(0, (end - startAt) / o.startBufferSec)), stage: 'buffer' });
+      if (end == null) return;
+      const convert = rep.path === 'transcode'; // a transcode starts once transcodeHoldSec are converted
+      emit('progress', { fraction: Math.min(1, Math.max(0, (end - startAt) / (convert ? o.transcodeHoldSec : o.startBufferSec))), stage: convert ? 'convert' : 'buffer' });
     };
     const bufferedEnd = () => {
       const b = video.buffered, t = Math.max(video.currentTime, startAt);
@@ -395,7 +433,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       rep.candidate = { rank: win.c.rank, score: win.c.score, container: win.c.container, res: win.c.res, videoCodec: win.c.videoCodec, audioCodec: win.c.audioCodec, filename: win.c.filename };
       rep.sizeMB = win.c.sizeMB != null ? Math.round(win.c.sizeMB) : null;
       rep.fileSize = win.c.sizeMB != null ? Math.round(win.c.sizeMB * 1048576) : null;
-      emit('progress', { fraction: 0, stage: 'buffer' });
+      emit('progress', { fraction: 0, stage: win.d.path === 'transcode' ? 'convert' : 'buffer' });
       media = win.d.path === 'direct' ? attachDirect(win, at) : await attachRemux(win, at, segments || []);
       // A remux error before the first frame fails over at once instead of waiting out the canplay timer.
       const ok = await Promise.race([waitCanPlay(), media.failed || new Promise(() => {})]);
@@ -422,13 +460,16 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     }
 
     async function attachRemux(win, at, segments = []) {
-      let runId = null, ended = false, firstMedia = false, until = at + 10, audioStarted = false, failNow;
+      let runId = null, ended = false, firstMedia = false, until = at + 10, audioStarted = false, failNow, played = false;
+      const transcode = win.d.path === 'transcode';
+      const startPlay = () => { played = true; video.play().catch(() => {}); };
       const failed = new Promise(r => { failNow = r; });
       const split = !!win.d.split;
       const sink = createMseSink(video, win.d.mime, {
         audioMime: split ? win.d.audioMime : null,
         onEvicted: t => startRun(t),
         onStreamingChange: () => pushDemand(),
+        durationSec: win.info.durationSec,
       });
       try {
         await Promise.race([sink.opened, new Promise((_, rej) => setTimeout(() => rej(new Error('sourceopen_timeout')), o.canplayMs))]);
@@ -439,8 +480,18 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       }
       if (o.debug) globalThis.__kcSink = sink;
       // Seek before any data: the first fragment then satisfies a pending seek, rather than being seeked into.
-      if (at > 0) { try { video.currentTime = at; } catch { /* set again after the first append */ } }
+      if (at > 0) { sink.ensureDuration(at); try { video.currentTime = at; } catch { /* set again after the first append */ } }
+      // The end of the stream is signalled only when playback reaches it: after endOfStream WebKit drops later
+      // appends, so a seek back into time not buffered would hang. Ending there means the video ends and the
+      // play finishes, so nothing seeks afterwards.
+      let endPending = false;
+      const maybeEnd = () => {
+        if (!endPending) return;
+        const t = video.currentTime, end = sink.bufferedEndAt(t);
+        if (end != null && end - t < 0.6) { endPending = false; sink.end(); }
+      };
       const pushDemand = () => {
+        maybeEnd();
         if (!runId) return;
         const t = video.currentTime;
         const end = sink.bufferedEndAt(t) ?? t;
@@ -448,6 +499,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         engine.demand(win.id, runId, until);
       };
       const onSeg = msg => {
+        if (msg.op === 'decoder') { if (!rep.ttffMs) emit('progress', { fraction: msg.fraction, stage: 'decoder' }); return; }
         if (msg.runId !== runId) return;
         if (msg.op === 'segment') {
           let which = 'main', offset = null;
@@ -458,19 +510,23 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
             if (msg.kind === 'media' && !firstMedia) {
               firstMedia = true; mark('firstAppend');
               if (at > 0 && Math.abs(video.currentTime - at) > 0.5) video.currentTime = at;
-              video.play().catch(() => {});
             }
+            // Remux plays at once; a transcode waits until enough is converted to play smoothly (the loading toy
+            // stays up meanwhile), or until the whole file is done.
+            if (msg.kind === 'media' && !played && (!transcode || (sink.bufferedEndAt(video.currentTime) ?? 0) - video.currentTime >= o.transcodeHoldSec)) startPlay();
             onProgress();
           }, e => { if (!firstMedia) { rep.failures.push('append:' + scrubSecrets(e?.message)); failNow(false); } });
-        } else if (msg.op === 'done' && msg.result?.done) { ended = true; sink.end(); }
-        else if (msg.op === 'error') { rep.failures.push('remux:' + scrubSecrets(msg.error)); if (!firstMedia) failNow(false); }
+        } else if (msg.op === 'done' && msg.result?.done) { ended = true; endPending = true; maybeEnd(); if (firstMedia && !played) startPlay(); }
+        else if (msg.op === 'error') { rep.failures.push('remux:' + scrubSecrets(msg.error)); if (!firstMedia) failNow(false); else { if (!played) startPlay(); onBroken(scrubSecrets(msg.error)); } }
       };
       engine.route(win.id, onSeg);
       function startRun(from) {
+        broken = null; // a new run from a new spot may well get past it
+        endPending = false;
         if (runId) engine.abort(win.id, runId);
         sink.dropQueued();
         runId = uid(); ended = false; audioStarted = false;
-        engine.remux(win.id, runId, { audioIndex: win.d.audioIndex, startSec: from, until: from + 10, split });
+        engine.remux(win.id, runId, { audioIndex: win.d.audioIndex, startSec: from, until: from + 10, split, audioMp3: !!win.d.audioMp3 });
       }
       // Warm segments from prefetch go in first; the live run continues from where they stopped.
       if (segments.length && at <= 0.5) {
@@ -479,7 +535,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         const last = segments[segments.length - 1];
         const nextFrom = segments.stoppedAt ?? last.endSec ?? o.prefetchSec;
         runId = uid(); audioStarted = false;
-        engine.remux(win.id, runId, { audioIndex: win.d.audioIndex, startSec: nextFrom, until: nextFrom + 10, split });
+        engine.remux(win.id, runId, { audioIndex: win.d.audioIndex, startSec: nextFrom, until: nextFrom + 10, split, audioMp3: !!win.d.audioMp3 });
       } else {
         startRun(at);
       }
@@ -487,11 +543,14 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         kind: 'remux',
         failed,
         onTime: pushDemand,
-        onWaiting() { const t = video.currentTime; if (sink.bufferedEndAt(t) == null && !ended) startRun(t); },
+        onWaiting() { maybeEnd(); const t = video.currentTime; if (sink.bufferedEndAt(t) == null && !ended) startRun(t); },
         seek(t) {
-          if (sink.bufferedEndAt(t) != null) { video.currentTime = t; return; }
-          video.currentTime = t;
+          const go = () => { try { video.currentTime = t; } catch { /* set again when data arrives */ } };
+          if (sink.bufferedEndAt(t) != null) { go(); return; }
+          if (!sink.ensureDuration(t)) sink.whenIdle().then(() => { if (sink.ensureDuration(t) && Math.abs(video.currentTime - t) > 0.5) go(); });
+          go();
           startRun(t);
+          sink.dropFarFrom(t, 15, o.aheadSec + 30).then(() => { if (video.seeking && Math.abs(video.currentTime - t) < 0.5) go(); });
         },
         teardown() { if (runId) engine.abort(win.id, runId); runId = null; sink.destroy(); },
       };
@@ -512,13 +571,24 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
 
     async function runFrom(idx, at, warmWin, warmSegs) {
       let win = warmWin;
+      // Files turned down only on a content check (length, no or foreign audio) are kept, in rank order, and played
+      // anyway when every other file has failed (brief, Stream choice: they play last, but they play).
+      const softFails = [];
+      let list = state.ranked, lenientRound = false;
       while (!isStopped()) {
         if (!win) {
-          win = await race(state.ranked, idx, makeTry(state.it, state.secrets, rep, emit).tryOne, (c, e) => {
+          win = await race(list, idx, makeTry(state.it, state.secrets, rep, emit).tryOne, (c, e) => {
             const reason = scrubSecrets(e.message);
             rep.fallbacks.push({ rank: c.rank, reason });
+            if (e?.soft && !lenientRound) { softFails.push(c); return; }
             if (!/app_token|origin/.test(reason)) learned.failed(c.key);
           });
+          if (!win && !lenientRound && softFails.length) {
+            lenientRound = true;
+            list = softFails.sort((a, b) => a.rank - b.rank).map(c => ({ ...c, lenient: true }));
+            idx = 0;
+            continue;
+          }
           if (!win) break;
           if (win.fatal) { rep.failures.push(win.fatal); return finish('failed-all', [win.fatal]); }
         }
@@ -586,6 +656,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     let started = false, paused = false, endedByUs = false, stopping = false, lastSeek = null, seekRetried = false;
     let stallT = null, seekT = null, needsTapT = null, lastEmit = -1;
     let ad = false, adStart = 0, needsTapShown = false, lastClock = null, seekOnMove = null, adPaused = false, errRetried = false, lastContent = startAt, pendingSeek = null;
+    let pauseWanted = false, repausedAt = 0, stallSince = null, firstDuration = 0, liveLike = false, adAnnounced = false, retryHeld = null;
     rep.ads = 0; rep.adSeconds = 0;
     yt.resetProgress();
     yt.shield(pol.shield);
@@ -595,7 +666,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     // The window counts from wherever YouTube actually landed (the first PLAYING after it moved or buffered), and
     // closes after about 3 s of her video playing whatever the clock says. Any ad clears it, start or end.
     let quietWin = null, lastPlaying = null, jumpGraceUntil = 0;
-    const openQuiet = (to, landed = false) => { quietWin = { to, from: yt.time(), base: landed ? to : null, moved: landed, playMs: 0, at: null }; };
+    const openQuiet = (to, landed = false, jump = false) => { quietWin = { to, from: yt.time(), base: landed ? to : null, moved: landed, playMs: 0, at: null, jump }; };
     const applyPolicy = () => {
       const st = yt.state(), t = yt.time();
       const clockRunning = lastClock != null && t > lastClock + 0.05;
@@ -604,12 +675,19 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       if (nowAd !== ad) {
         ad = nowAd;
         quietWin = null; lastPlaying = null; jumpGraceUntil = performance.now() + 1500; // YouTube's clock is the ad's for a moment either side
-        if (ad) { adStart = performance.now(); rep.ads++; clearT(); if (!paused && !adPaused) yt.show(true); } // the buffering before an ad is no stall; the ad itself is muted
-        else {
+        stallSince = null; // a stall clock never runs across an ad
+        if (ad) {
+          adStart = performance.now(); rep.ads++; clearT(); // the buffering before an ad is no stall; the ad itself is muted
+          // An ad that starts while she is paused (YouTube ignored her pause, then played into a mid-roll) waits,
+          // hidden and unannounced, so our pause screen stays; her play brings it on with 'ad' {active:true}.
+          if (pauseWanted && started) { adPaused = true; adAnnounced = false; yt.show(false); yt.pause(); }
+          else { adAnnounced = true; if (!paused && !adPaused) yt.show(true); }
+        } else {
           rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); adPaused = false;
           if (pendingSeek != null && !paused) { const to = pendingSeek; pendingSeek = null; queueMicrotask(() => { if (!stopping) seekNow(to); }); } // ±15 pressed during the ad
         }
-        emit('ad', { active: ad });
+        if (adAnnounced) emit('ad', { active: ad });
+        if (!ad) adAnnounced = false;
         // YouTube can report PLAYING before its last ad message is replaced: re-read the state once the ad clears.
         if (!ad) queueMicrotask(() => { if (!stopping) onStateImpl(yt.state()); });
       }
@@ -621,7 +699,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       // straight into the ad, with no PLAYING at the new spot to wait for.
       if (started && !ad && !paused && !endedByUs && !quietWin && now > jumpGraceUntil && lastPlaying && st !== YT_STATE.ENDED) {
         const passed = (now - lastPlaying.at) / 1000;
-        if (t - lastPlaying.t > passed + 2 || lastPlaying.t - t > 2) openQuiet(t, contentPlaying);
+        if (t - lastPlaying.t > passed + 2 || lastPlaying.t - t > 2) openQuiet(t, contentPlaying, true);
       }
       lastPlaying = contentPlaying && !paused ? { t, at: now } : ad || paused ? null : lastPlaying;
       // The seek window closes once her video (not an ad) has played about a second where YouTube landed, and in any
@@ -638,12 +716,25 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       // Once her video has started, YouTube reporting unstarted or cued is a mid-roll starting before its first
       // message says so; so is anything inside a seek window. Muting at once keeps the ad silent from its first frame.
       const quiet = started && !endedByUs && (st === YT_STATE.UNSTARTED || st === YT_STATE.CUED || !!quietWin);
-      ytAdHeld = pol.adMute && (ad || quiet);
+      // Paused by her (our pause screen is up): if YouTube plays anyway, pause it again; it stays hidden and muted.
+      if (pauseWanted && started && ((!ad && st === YT_STATE.PLAYING) || (ad && adPaused && clockRunning))) {
+        yt.show(false);
+        if (now - repausedAt > 700) { repausedAt = now; yt.pause(); }
+      }
+      ytAdHeld = pol.adMute && (ad || quiet || pauseWanted);
       if (pol.adMute) {
-        const want = desiredMute({ ad: ad || quiet, appMuted: mutedNow });
+        const want = desiredMute({ ad: ad || quiet || pauseWanted, appMuted: mutedNow });
         if (want !== yt.isMuted()) (want ? yt.mute() : yt.unMute());
       }
       if (pol.shield) yt.shield(true, holeFor({ ad, adElapsed: ad ? (performance.now() - adStart) / 1000 : 0, needsTap: needsTapShown && !started, skipHole: o.ytSkipHole }));
+    };
+    // "The last seconds" needs a known, fixed duration: never with duration 0, a growing one, or a live video.
+    const nearEndOk = (d, at, within) => d > 0 && !liveLike && !yt.isLive?.() && at >= d - within;
+    const endNearEnd = detail => {
+      endedByUs = true; yt.show(false); yt.pause(); clearT();
+      if (ad) { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); ad = false; adPaused = false; emit('ad', { active: false }); }
+      rep.endedNearEnd = true;
+      finish('ended', null, { nearEnd: true, ...detail });
     };
     const clearT = () => { clearTimeout(stallT); clearTimeout(seekT); stallT = seekT = null; };
     const endNow = () => {
@@ -653,9 +744,20 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     };
     const poll = setInterval(() => {
       applyPolicy();
-      if (ad) return; // during an ad the clock is the ad's: no time events, no end guard
+      if (ad) { stallSince = null; return; } // during an ad the clock is the ad's: no time events, no end guard, no stall clock
       const t = yt.time(), d = yt.duration();
-      if (started && yt.state() === YT_STATE.PLAYING) lastContent = t;
+      // Her spot: only from her video playing (an ad reported as PLAYING before its first message has seeking off or
+      // jumps the clock, which opens a jump window), never while a jump we didn't make is unconfirmed.
+      if (started && yt.state() === YT_STATE.PLAYING && yt.progress()?.allowSeeking !== false && !(quietWin && quietWin.jump)) lastContent = t;
+      if (d > 0) { if (!firstDuration) firstDuration = d; else if (d > firstDuration + 1) liveLike = true; } // a duration that grows: live-like
+      // A seek is done once her video plays near its target, even when YouTube showed no state change (a seek
+      // inside what it had buffered): a later stall must never re-issue it.
+      if (lastSeek != null && yt.state() === YT_STATE.PLAYING && Math.abs(t - lastSeek) <= 1.5) lastSeek = null; // near the target: a back seek's cached clock is still past it
+      // Buffering in the last seconds for long enough is the end, as watched; never mid-video, never live-like.
+      if (started && !paused && !endedByUs && yt.state() === YT_STATE.BUFFERING) {
+        stallSince ??= performance.now();
+        if (nearEndOk(d, Math.max(lastContent, t), o.ytStallEndSec) && performance.now() - stallSince >= o.ytStallEndMs) endNearEnd({ reason: 'stall' }); // the clock counts too: a stall right after a jump inside YouTube
+      } else stallSince = null;
       if (started) rep.watchedSec = Math.max(rep.watchedSec, Math.round(t - startAt));
       if (started && Math.abs(t - lastEmit) >= 1) { lastEmit = t; emit('time', { position: t, duration: d || null }); }
       if (started && !endedByUs && d > 0 && t >= d - o.ytEndGuardSec && yt.state() === YT_STATE.PLAYING) endNow();
@@ -664,13 +766,15 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         if (ad && st !== YT_STATE.ENDED) { if (!adPaused) yt.show(true); return; } // an ad is shown (muted, shielded), never read as pause or start
         if (endedByUs || stopping) { if (st !== YT_STATE.PAUSED && st !== YT_STATE.ENDED) yt.show(false); return; }
         if (seekOnMove != null && (st === YT_STATE.PLAYING || st === YT_STATE.BUFFERING)) { const t = seekOnMove; seekOnMove = null; seekNow(t); }
+        if (st === YT_STATE.PLAYING && pauseWanted && started) { yt.show(false); return; } // applyPolicy pauses it again
         if (st === YT_STATE.PLAYING) {
           clearTimeout(needsTapT); clearT(); yt.show(true);
+          lastSeek = null; // the seek is done: a later stall must never re-issue it
           if (!started) { started = true; markReady(); }
           else if (paused) { paused = false; emit('resumed', {}); }
           else emit('resumed', {});
         } else if (st === YT_STATE.BUFFERING) {
-          if (started) yt.show(true);
+          if (started && !pauseWanted) yt.show(true);
           if (!stallT) stallT = setTimeout(() => { rep.stalls++; emit('stalled', {}); }, o.stallNoticeMs);
           if (lastSeek != null && !seekRetried && !seekT) {
             seekT = setTimeout(() => { seekRetried = true; openQuiet(lastSeek); yt.seek(lastSeek); }, 8000);
@@ -692,17 +796,20 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         yt.show(false); clearT();
         const kind = classifyYtError(code);
         // In the last seconds of her video an error is the end, not a failure: the app shows its goodbye, as watched.
-        const d = yt.duration();
-        if (started && d > 0 && lastContent >= d - o.ytNearEndSec && !stopping && !endedByUs) {
-          endedByUs = true; yt.show(false); yt.pause();
-          if (ad) { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); ad = false; adPaused = false; emit('ad', { active: false }); }
-          rep.ytError = { code, kind }; rep.endedNearEnd = true;
-          finish('ended', null, { nearEnd: true, reason: 'yt_' + code, kind, code });
+        if (started && nearEndOk(yt.duration(), lastContent, o.ytNearEndSec) && !stopping && !endedByUs) {
+          rep.ytError = { code, kind };
+          endNearEnd({ reason: 'yt_' + code, kind, code });
           return;
         }
         // A passing fault (error 5: often a mid-roll that failed to load) is retried once, from where her video was.
         if (kind === 'transient' && !errRetried && !stopping && !endedByUs) {
           errRetried = true; rep.ytRetries = (rep.ytRetries || 0) + 1;
+          // While she is paused the reload waits for her play: it would start playback, or its pre-roll.
+          if (pauseWanted) {
+            if (ad) { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); ad = false; adPaused = false; if (adAnnounced) emit('ad', { active: false }); adAnnounced = false; }
+            yt.resetProgress(); lastClock = null; retryHeld = { at: started ? lastContent : startAt || 0 };
+            return;
+          }
           if (ad) { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); ad = false; adPaused = false; emit('ad', { active: false }); }
           yt.resetProgress(); lastClock = null;
           if (started) emit('stalled', {});
@@ -739,11 +846,19 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     needsTapT = setTimeout(checkTap, o.ytNeedsTapMs + (sync ? 0 : 3000));
     // Paused during an ad (her tap on the layer, the app going to the background): the ad waits, hidden, and the
     // app gets 'paused' {ad:true} so it can show its pause screen; resume brings the ad back with 'ad' {active:true}.
+    // Her pause: hidden, muted and 'paused' at once, whether or not YouTube confirms (it may ignore a pause while it
+    // buffers). YouTube's late PAUSED adds nothing; if it plays anyway, applyPolicy pauses it again.
     s._ctl.pause = () => {
+      if (endedByUs) return;
       const adNow = ad && !adPaused;
       if (adNow) adPaused = true; // before pausing: YouTube's state change may come back synchronously
-      yt.show(false); yt.pause();
+      pauseWanted = true; // also during an ad she can see: if YouTube ignores it, her video stays paused after the ad
+      yt.show(false);
+      if (!adNow && !pol.adMute) yt.mute();
+      yt.pause();
       if (adNow) emit('paused', { ad: true });
+      else if (started && !paused) { paused = true; clearT(); emit('paused', {}); }
+      applyPolicy();
     };
     s._ctl.inAd = () => ad;
     s._ctl.duration = () => yt.duration();
@@ -754,9 +869,17 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     // After our own end nothing may play again: the end panel would be one frame away.
     s._ctl.resume = () => {
       if (endedByUs) return;
-      if (adPaused) { adPaused = false; yt.show(true); yt.play(); emit('ad', { active: true }); return; }
+      pauseWanted = false; // before the ad branch: an ad held under her pause must not keep her video paused after it
+      if (adPaused) { adPaused = false; adAnnounced = true; yt.show(true); yt.play(); emit('ad', { active: true }); return; }
+      if (!pol.adMute && !mutedNow) yt.unMute();
+      if (retryHeld) { // the error retry held while she was paused: reload now, from her spot (or a seek she made)
+        const at = pendingSeek ?? retryHeld.at; retryHeld = null; pendingSeek = null;
+        openQuiet(at); yt.load(item.ytId || item.videoId, at);
+        return;
+      }
       if (pendingSeek != null) { seekOnMove = pendingSeek; pendingSeek = null; }
       yt.play();
+      if (yt.state() === YT_STATE.BUFFERING) yt.show(true); // buffering is content on screen
     };
     // During an ad (playing or paused) YouTube's clock is the ad's and it won't seek: hold the jump, from her video's
     // spot, and make it when the ad is over.

@@ -2,7 +2,7 @@
 // the grown-up gate and parent screen in parent.js.
 import { openStore } from './store.js';
 import { ALL_ROWS, loadCatalogs, homeCategories, languageOf, loadTitle, loadStream, defaultFetchJson, titleOrder } from './data.js';
-import { migrateFailures, rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, needsHowMany, canStart, updateSeen, youtubeHostFor } from './rules.js';
+import { migrateFailures, shouldClearFailures, rollUsage, todayKey, hiddenByFailure, bedtimeWanted, applyBedtime, needsHowMany, canStart, updateSeen, youtubeHostFor } from './rules.js';
 import { guardConsole, secretValues, urlCarriesSecret } from './secrets.js';
 import { createSound } from './sound.js';
 import { createPlayback } from './playback.js';
@@ -17,7 +17,7 @@ const $ = (s, r = document) => r.querySelector(s);
 export const app = {
   store: null, sound: null, player: null, playui: null,
   settings: null, usage: null, favs: [], progress: new Map(), failed: {}, catalogs: {}, home: {},
-  bedtime: false, playing: false, justEnded: null, parentOpen: false, rowPages: {},
+  bedtime: false, playing: false, justEnded: null, parentOpen: false, rowStart: {},
   metaCache: new Map(), streamCache: new Map(), titleReady: new Map(), streamReady: new Map(),
 };
 
@@ -193,6 +193,10 @@ async function boot() {
   app.usage = rollUsage(await app.store.getUsage(), todayKey());
   app.failed = await app.store.getFailed();
   if (!(await app.store.getKV('failuresV2'))) { app.failed = migrateFailures(app.failed); await app.store.saveFailed(app.failed); await app.store.setKV('failuresV2', true); }   // QA bug 4
+  // Shows hidden under the old name rules come back by themselves: the first run on a new player clears every stored
+  // failure once (rules.js, OLD_NAME_RULE_PLAYERS).
+  const playerHash = document.querySelector('meta[name="kc-player"]')?.content || '';
+  if (shouldClearFailures({ playerHash, cleared: !!(await app.store.getKV('failuresV3')) })) { app.failed = {}; await app.store.saveFailed({}); await app.store.setKV('failuresV3', true); }
   app.favs = await app.store.allFavs();
   for (const p of await app.store.allProgress()) app.progress.set(p.key, p);
   const secrets = await app.store.getSecrets();

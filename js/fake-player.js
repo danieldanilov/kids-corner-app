@@ -15,7 +15,15 @@ export function createFakePlayer({ fake, ytContainer = null }) {
       let pos = startAt, playing = false, timers = [];
       const later = (ms, fn) => timers.push(setTimeout(fn, ms));
       const steps = 6;
-      for (let i = 0; i <= steps; i++) later((loadMs / steps) * i, () => emit('progress', { fraction: i / steps, stage: i < 3 ? 'resolving' : 'buffering' }));
+      // cfg.transcode {decoderMs, convertMs}: the transcode path (player contract): 'decoder' 0..1 while ffmpeg.wasm
+      // downloads and compiles, then 'convert' 0..1 for the seconds converted ahead; 'ready' follows (set loadMs to
+      // cover both).
+      if (cfg.transcode && item.kind === 'torbox') {
+        const { decoderMs = 3000, convertMs = 2000 } = cfg.transcode, n = 10;   // decoderMs 0: decoded in the browser, no 'decoder'
+        later(0, () => emit('progress', { fraction: 0.1, stage: 'probe' }));
+        if (decoderMs) for (let i = 0; i <= n; i++) later(200 + (decoderMs / n) * i, () => emit('progress', { fraction: i / n, stage: 'decoder' }));
+        for (let i = 0; i <= n; i++) later(200 + decoderMs + (convertMs / n) * i, () => emit('progress', { fraction: i / n, stage: 'convert' }));
+      } else for (let i = 0; i <= steps; i++) later((loadMs / steps) * i, () => emit('progress', { fraction: i / steps, stage: i < 3 ? 'resolving' : 'buffering' }));
       const needsTap = (cfg.needsTapFor || []).includes(item.kind);
       if (needsTap) later(Math.min(1500, loadMs / 2), () => emit('needs-tap', { state: -1, reason: 'unstarted' }));
       // YouTube stand-in, like the real player (player/README.md): a box that counts the taps it receives and pauses
@@ -71,6 +79,13 @@ export function createFakePlayer({ fake, ytContainer = null }) {
           if (pos >= lengthS) { clearInterval(tick); playing = false; emit('ended'); }
           // cfg.nearEndFail {atS, ad, code}: YouTube fails within 15 s of the end (player contract): an open ad is
           // closed first, then 'ended' {nearEnd:true, reason, kind, code}; nothing is retried.
+          // cfg.midplayFail {atS}: a file breaks for good after it started (player contract): near the end that is
+          // 'ended' {nearEnd:true, reason:'broken'}, otherwise failed-all ['midplay:<reason>'].
+          else if (!yt && cfg.midplayFail && pos >= cfg.midplayFail.atS) {
+            clearInterval(tick); playing = false;
+            if (lengthS - pos <= 15) emit('ended', { nearEnd: true, reason: 'broken' });
+            else emit('failed-all', { reasons: ['midplay:stall'] });
+          }
           else if (yt && cfg.nearEndFail && pos >= cfg.nearEndFail.atS) {
             clearInterval(tick); playing = false;
             const code = cfg.nearEndFail.code ?? 5, end = () => emit('ended', { nearEnd: true, reason: `yt_${code}`, kind: code === 5 ? 'transient' : 'gone', code });

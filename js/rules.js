@@ -125,8 +125,39 @@ export const isSetupReason = (r, { keyProven = false } = {}) => SETUP_RE.test(St
 export function recordFailure(failed, item, reasons = [], now = Date.now(), { keyProven = false } = {}) {
   if (reasons.some(r => isSetupReason(r, { keyProven }))) return failed;
   const cur = failed[item.titleId] || { type: item.type, videos: {} };
-  return { ...failed, [item.titleId]: { ...cur, videos: { ...cur.videos, [item.videoId]: now } } };
+  const labels = item.label ? { ...(cur.labels || {}), [item.videoId]: item.label } : cur.labels;   // the grown-ups screen names it
+  return { ...failed, [item.titleId]: { ...cur, videos: { ...cur.videos, [item.videoId]: now }, ...(labels ? { labels } : {}) } };
 }
+
+// Single hidden episodes and videos for the grown-ups screen, each with a name and its "Try again" ids. An episode of
+// a show hidden as a whole is left to that show's own line. nameOf(titleId) names records from before labels.
+export function hiddenEpisodes(failed, now = Date.now(), nameOf = () => null) {
+  const wholeTitles = hiddenByFailure(failed, now).titles, out = [];
+  for (const [titleId, f] of Object.entries(failed || {})) {
+    if (wholeTitles.has(titleId)) continue;
+    for (const [videoId, at] of Object.entries(f.videos || {})) {
+      if (now - at >= FAIL_TTL_MS) continue;
+      const se = /:(\d+):(\d+)$/.exec(videoId);
+      const label = f.labels?.[videoId] || `${nameOf(titleId) || titleId}${se ? ` S${se[1]}E${se[2]}` : ''}`;
+      out.push({ titleId, videoId, label, at });
+    }
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+export function unfailVideo(failed, titleId, videoId) {
+  const f = failed?.[titleId];
+  if (!f) return failed;
+  const videos = { ...f.videos }; delete videos[videoId];
+  const out = { ...failed };
+  if (!Object.keys(videos).length) delete out[titleId];
+  else { const labels = { ...(f.labels || {}) }; delete labels[videoId]; out[titleId] = { ...f, videos, labels }; }
+  return out;
+}
+
+// Every player that ever shipped (root or preview) before Torrentio's list was trusted: failures they stored hid
+// titles under the old name rules. The first run on any other player clears every stored failure once.
+export const OLD_NAME_RULE_PLAYERS = ['5a492093da', '36c9c28d4f', '2e7795822e', 'ecd9d4e284', 'e3d3135404', 'af750bc9f5', 'a0baf1e3b2', '8f912f2e92', '685b156f21', '53abfeffd5', '517bee287f', '3d002b56d0', '35128bb32b', '1b025cd682', '11f4a47db1'];
+export const shouldClearFailures = ({ playerHash, cleared }) => !cleared && !!playerHash && !OLD_NAME_RULE_PLAYERS.includes(playerHash);
 
 // Whether a failure counts against the content at all. YouTube: only when the player says the video is gone (its
 // verdict in failed-all's kind; older players: codes 2, 100, 101, 150); transient and setup errors never count.

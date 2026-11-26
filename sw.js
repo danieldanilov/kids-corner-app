@@ -1,11 +1,11 @@
 // Kids Corner service worker: app shell, catalog JSON and fonts cached so the Home Screen app opens instantly.
 // Never caches video or audio, range requests, Torrentio, the resolver, TorBox or YouTube.
-const VERSION = 'f99844028701';
-const PRECACHE = ["./","css/app.css","css/toys.css","icons/apple-touch-icon.png","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","./index.html","js/art.js","js/connection.js","js/controls.js","js/data.js","js/episodes-index.js","js/fake-player.js","js/gate.js","js/main.js","js/parent.js","js/playback.js","js/playui.js","js/rules.js","js/search.js","js/secrets.js","js/sound.js","js/store.js","js/toys.js","js/views.js","manifest.webmanifest","player/engine.js","player/index.js","player/learned.js","player/mse.js","player/probe.js","player/remux-worker.js","player/remux.js","player/select.js","player/silent.js","player/sources.js","player/vendor/MEDIABUNNY-LICENSE.txt","player/vendor/mediabunny.min.mjs","player/youtube.js","voice/index.json"];
+const VERSION = '0b0f63c3aea7';
+const PRECACHE = ["./","css/app.css","css/toys.css","icons/apple-touch-icon.png","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png","./index.html","js/art.js","js/connection.js","js/controls.js","js/data.js","js/episodes-index.js","js/fake-player.js","js/gate.js","js/main.js","js/parent.js","js/playback.js","js/playui.js","js/rules.js","js/search.js","js/secrets.js","js/sound.js","js/store.js","js/toys.js","js/views.js","manifest.webmanifest","player/avi.js","player/aviwindow.js","player/decoders-ffmpeg.js","player/decoders.js","player/demux-asf.js","player/demux-flv.js","player/demux-ps.js","player/engine.js","player/ffmpeg-worker.js","player/index.js","player/inputs.js","player/learned.js","player/mse.js","player/probe.js","player/remux-worker.js","player/remux.js","player/select.js","player/silent.js","player/sources.js","player/transcode.js","player/vendor/FFMPEG-WASM.txt","player/vendor/MEDIABUNNY-LICENSE.txt","player/vendor/mediabunny.min.mjs","player/youtube.js","voice/index.json"];
 // The preview copy (/kids-corner-app/preview/) keeps its own shell cache so the two never delete each other's.
 const PREVIEW = self.registration.scope.includes('/preview/');
 const SHELL_PREFIX = PREVIEW ? 'kcp-shell-' : 'kc-shell-';
-const SHELL = SHELL_PREFIX + VERSION, DATA = 'kc-data', VOICE = 'kc-voice', IMG = 'kc-img', FONTS = 'kc-fonts';
+const SHELL = SHELL_PREFIX + VERSION, DATA = 'kc-data', VOICE = 'kc-voice', IMG = 'kc-img', FONTS = 'kc-fonts', WASM = 'kc-wasm';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 const IMG_MAX = 800;
 const DATA_HOSTS = ['danieldanilov.github.io/kids-stremio-catalog/', 'v3-cinemeta.strem.io/meta/'];
@@ -43,10 +43,11 @@ async function trim(cacheName, max) {
   for (let i = 0; i < keys.length - max; i++) await c.delete(keys[i]);
 }
 
-// A clip's URL carries its content hash (?v=); once a newer recording is cached, older copies of that clip go.
-async function dropOldVoice(url) {
+// A clip's URL carries its content hash (?v=); once a newer recording is cached, older copies of that clip go. The
+// ffmpeg decoder works the same way in its own cache.
+async function dropOldVoice(url, cacheName = VOICE) {
   if (!url.search) return;
-  const c = await caches.open(VOICE);
+  const c = await caches.open(cacheName);
   for (const k of await c.keys()) { const u = new URL(k.url); if (u.pathname === url.pathname && u.search !== url.search) await c.delete(k); }
 }
 
@@ -81,6 +82,9 @@ self.addEventListener('fetch', (e) => {
   const here = url.origin === self.location.origin && url.href.startsWith(self.registration.scope);
 
   if (here) {
+    // The ffmpeg.wasm decoder and its loader (about 10 MB, only for files that need converting): cached on first use in
+    // a cache no app build replaces, by their versioned URL (?v=<SHA-256 start>); a newer one drops the older.
+    if (/\/player\/vendor\/ffmpeg-core\.(wasm|js)$/.test(url.pathname)) { e.respondWith(cacheFirst(e, WASM).then((r) => { e.waitUntil(dropOldVoice(url, WASM)); return r; })); return; }
     if (url.pathname.includes('/voice/') && url.pathname.endsWith('.m4a')) { e.respondWith(cacheFirst(e, VOICE).then((r) => { e.waitUntil(dropOldVoice(url)); return r; })); return; }
     if (url.pathname.includes('/testbed/')) return;
     if (!PREVIEW && url.pathname.includes('/preview/')) return;   // the preview has its own worker; the live one stays out

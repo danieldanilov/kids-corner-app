@@ -204,5 +204,6 @@ export function createYouTubeHost(container, { muted = false, host = 'nocookie' 
     time() { try { return player?.getCurrentTime?.() || 0; } catch { return 0; } },
     duration() { try { return player?.getDuration?.() || 0; } catch { return 0; } },
     state() { try { return player?.getPlayerState?.(); } catch { return undefined; } },
+    isLive() { try { return !!player?.getVideoData?.()?.isLive; } catch { return false; } },
   };
 }

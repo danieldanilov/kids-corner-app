@@ -121,12 +121,15 @@
       <div class="row"><button class="primary" data-run="yt-pause">Pause</button><button data-run="yt-resume">Resume</button></div><div class="log" data-log="yt-pause"></div></div>
     <div class="sub"><h3>6c. Seek forward 60 s, then back 30 s <span class="status" data-sub="yt-seek">waiting</span></h3>
       <div class="row"><button class="primary" data-run="yt-seek">Run</button></div><div class="log" data-log="yt-seek"></div></div>
+    <div class="sub"><h3>6c2. +15 while paused, as the app's pause screen does it <span class="status" data-sub="yt-seek-paused">waiting</span></h3>
+      <p class="hint">Start a video (6a) and let it play. The step pauses it, jumps 15 s forward, resumes, and checks the video went on from the new spot.</p>
+      <div class="row"><button class="primary" data-run="yt-seek-paused">Run</button></div><div class="log" data-log="yt-seek-paused"></div></div>
     <div class="sub"><h3>6d. Skip to another video <span class="status" data-sub="yt-skip">waiting</span></h3>
       <div class="row"><button class="primary" data-run="yt-skip">Run</button></div><div class="log" data-log="yt-skip"></div></div>
     <div class="sub"><h3>6e. The end: our screen takes over before YouTube's end panel <span class="status" data-sub="yt-end">waiting</span></h3>
       <div class="row"><button class="primary" data-run="yt-end">Run</button></div><div class="log" data-log="yt-end"></div></div>
     <div class="sub"><h3>6f. Ways out of the app <span class="status" data-sub="yt-exits">waiting</span></h3>
-      <p class="hint">Start a video (6a), then for each part: tap Arm, tap that part of the player within 10 seconds, come back to this app if it took you out. The page notices if you left. The YouTube logo is allowed to lead out; nothing else should.</p>
+      <p class="hint">Start a video (6a), then for each part: tap Arm, tap that part of the player within 10 seconds, come back to this app if it took you out. The page notices if you left. The YouTube logo is allowed to lead out; nothing else should. This is the player without the app's clear layer; 6i checks it with the layer on.</p>
       <table id="exits"></table>
       <div class="log" data-log="yt-exits"></div></div>
     <div class="sub"><h3>6g. Ways out while YouTube's own screens show <span class="status" data-sub="yt-screens">waiting</span></h3>
@@ -137,11 +140,39 @@
   </section>
 
   <section id="s-premium"><h2>6h. Ads with YouTube Premium <span class="status">waiting</span></h2>
-    <p class="hint">Does a YouTube Premium sign-in remove the ads inside the app? First sign in to <b>youtube.com</b> with the Premium account in Safari (and once more inside the Home Screen copy if you test there, since it keeps its own sign-in). Then play the same video on each host and answer the question after each. If an ad shows, let it run or press Skip. If a play button shows, tap it. Ads don't come every time, so run each host twice.</p>
+    <p class="hint">Does a YouTube Premium sign-in remove the ads inside the app? Run this in <b>Safari</b> (not the Home Screen copy, which has no address bar to sign in with). First sign in to <b>youtube.com</b> in Safari with the Premium account. Then come back here, play the same video on each host and answer the question after each. If an ad shows, let it run or press Skip. If a play button shows, tap it. Ads don't come every time, so run each host twice.</p>
+    <p class="hint"><b>What to expect:</b> with Safari's <i>Prevent Cross-Site Tracking</i> on (the default, under Settings › Apps › Safari), the youtube.com sign-in usually can't reach a player embedded in another site, so <b>ads on both hosts is the expected result</b>, not a fault. Only "no ads on youtube.com, ads on youtube-nocookie.com" would mean Premium works here.</p>
     <div class="sub"><h3>On youtube-nocookie.com (the app's default) <span class="status" data-sub="yt-ads-nocookie">waiting</span></h3>
       <div class="row"><button class="primary" data-run="yt-ads-nocookie">Play</button></div><div class="log" data-log="yt-ads-nocookie"></div></div>
     <div class="sub"><h3>On youtube.com (where a Premium sign-in could apply) <span class="status" data-sub="yt-ads-youtube">waiting</span></h3>
       <div class="row"><button class="primary" data-run="yt-ads-youtube">Play</button></div><div class="log" data-log="yt-ads-youtube"></div></div>
+  </section>
+
+  <section id="s-shield"><h2>6i. Clear layer and ad sound <span class="status">waiting</span></h2>
+    <p class="hint">Plays a video with the app's clear layer over YouTube, the way the app will. Turn <b>Sound on</b> first. Ads don't come every time: if none plays, tap <b>Play with the layer</b> again for the next video.</p>
+    <p class="hint"><b>What to expect:</b> an ad plays silently and the sound comes back when the video starts. During the ad the bottom-right quarter of the player stays open from the start, so YouTube's <b>Skip</b> button works as soon as YouTube shows it; the ad's title, its advertiser link and its info button stay covered. In this testbed a tap on the layer is only noted; in the app it pauses and shows the app's pause screen.</p>
+    <div class="row"><button class="primary" data-run="yt-shield">Play with the layer</button><button data-run="yt-shield-stop">Stop</button></div>
+    <div class="log" data-log="yt-shield"></div>
+    <p class="hint">For each part: tap <b>Arm</b>, then tap that part of the player within 10 seconds. A tap the layer catches, and a Skip that works, are recorded by themselves. Do the ad rows while an ad shows; the ad's bottom-right quarter is open on purpose, so a tap there that misses Skip reaches YouTube; its own row records what that does, and the ad-picture row checks the covered left half. Come back to this app if anything takes you out.</p>
+    <table id="exits3"></table>
+    <div class="log" data-log="yt-shield-exits"></div>
+  </section>
+
+  <section id="s-premium-app"><h2>6j. Premium sign-in inside the Home Screen app <span class="status">waiting</span></h2>
+    <p class="hint">Can a grown-up sign in to YouTube Premium from inside the Home Screen app, and does the app's player then skip ads? Run this from the <b>Home Screen copy</b> of the testbed (Share › Add to Home Screen, then open it from there). This page is open as: <b id="pa-mode">…</b>.</p>
+    <p class="hint"><b>What to expect:</b> probably ads on both hosts. A Home Screen app keeps its own cookies apart from Safari, and Safari blocks a sign-in from reaching a player embedded in another site unless that player asks for access. Only "no ads on youtube.com" here would mean it works.</p>
+    <div class="sub"><h3>1. Safari's Prevent Cross-Site Tracking is</h3>
+      <p class="hint">Settings › Apps › Safari › Prevent Cross-Site Tracking.</p>
+      <div class="row"><button data-pcst="on">On</button><button data-pcst="off">Off</button><span class="hint" id="pa-pcst"></span></div></div>
+    <div class="sub"><h3>2. Sign in from inside the app <span class="status" data-sub="yt-app-signin">waiting</span></h3>
+      <p class="hint">Try one button, sign in with the Premium account, then come back: tap Done or close if a bar shows, or close the app from the app switcher and reopen it if you're stuck. The page asks what happened when you're back. Then try the other button.</p>
+      <div class="row"><button class="primary" data-run="yt-signin-same">Sign in here (same window)</button><button data-run="yt-signin-window">Sign in in a new window</button><button data-run="yt-signin-check">Open youtube.com here</button></div>
+      <div class="log" data-log="yt-signin"></div></div>
+    <div class="sub"><h3>3. Ads on youtube-nocookie.com (the app's default) <span class="status" data-sub="yt-app-ads-nocookie">waiting</span></h3>
+      <div class="row"><button class="primary" data-run="yt-app-ads-nocookie">Play</button></div><div class="log" data-log="yt-app-ads-nocookie"></div></div>
+    <div class="sub"><h3>4. Ads on youtube.com <span class="status" data-sub="yt-app-ads-youtube">waiting</span></h3>
+      <p class="hint">Play each host three times; the player notes whether it saw an ad, and you confirm.</p>
+      <div class="row"><button class="primary" data-run="yt-app-ads-youtube">Play</button></div><div class="log" data-log="yt-app-ads-youtube"></div></div>
   </section>
 
   <section id="s-audio"><h2>7. Audio with the screen locked <span class="status">waiting</span></h2>

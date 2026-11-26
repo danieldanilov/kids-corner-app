@@ -8,6 +8,9 @@ import { isTypeSupported, mediaSourceClass } from './player/mse.js';
 
 const WORKER = 'https://resolver.kidscorner-app.workers.dev';
 const YT_IDS = ['DmGNBJzWvBU', 'SdOQ62zPJRY']; // Alphablocks compilations from Kids Corner's YouTube rows
+const AD_IDS = ['KGlw5ddesHo', 'asYFjPNbsJY', 'TbMEMCvFbZk', '9vellxmJqyo', 'DmGNBJzWvBU']; // Kids Corner videos that showed an ad when measured
+const SIGNIN = 'https://accounts.google.com/ServiceLogin?service=youtube&continue=' + encodeURIComponent('https://www.youtube.com/');
+const ARM_MS = globalThis.__tbArmMs || 10000;
 const STORY_STREAM = '/kids-stremio-catalog/stream/Audio/kc.pod.dremota-podcast.01213e73de9f.json';
 const BLUEY = { kind: 'torbox', type: 'series', imdbId: 'tt7678620', showName: 'Bluey', altNames: ['Блуи'], year: 2018, runtimeMin: 7 };
 const $ = s => document.querySelector(s);
@@ -39,17 +42,17 @@ function record(id, status, data = {}) {
   renderSummary();
 }
 function renderSummary() { $('#summary').textContent = JSON.stringify(results, null, 1); }
-const SECTION_OF = { resolve: 's-resolve', 'audio-lock': 's-audio', settings: 's-settings', env: 's-env', 'yt-premium': 's-premium' };
+const SECTION_OF = { resolve: 's-resolve', 'audio-lock': 's-audio', settings: 's-settings', env: 's-env', 'yt-premium': 's-premium', 'yt-app-premium': 's-premium-app' };
 function setStatus(id, status) {
   const sub = document.querySelector(`[data-sub="${id}"]`);
   const el = sub || document.querySelector(`#${SECTION_OF[id] || 's-' + id} h2 .status`);
-  if (!el) return;
+  if (!el) return rollup(); // a step shown only through its section's rollup
   el.textContent = { pass: 'pass', fail: 'fail', warn: 'check', run: 'running', waiting: 'waiting' }[status] || status;
   el.className = 'status ' + status;
   rollup();
 }
 function rollup() {
-  for (const [sec, ids] of Object.entries({ 's-direct': ['direct-sample', 'direct-live'], 's-remux': ['remux-sample', 'remux-eac3', 'remux-hevc', 'remux-mp3', 'remux-live', 'remux-live-ru'], 's-yt': ['yt-start', 'yt-pause', 'yt-seek', 'yt-skip', 'yt-end', 'yt-exits', 'yt-screens'] })) {
+  for (const [sec, ids] of Object.entries({ 's-direct': ['direct-sample', 'direct-live'], 's-remux': ['remux-sample', 'remux-eac3', 'remux-hevc', 'remux-mp3', 'remux-live', 'remux-live-ru'], 's-yt': ['yt-start', 'yt-pause', 'yt-seek', 'yt-seek-paused', 'yt-skip', 'yt-end', 'yt-exits', 'yt-screens'], 's-shield': ['yt-shield', 'yt-shield-exits'] })) {
     const st = ids.map(i => results.steps[i]?.status).filter(Boolean);
     const el = document.querySelector(`#${sec} h2 .status`);
     const v = !st.length ? 'waiting' : st.includes('fail') ? 'fail' : st.includes('run') ? 'run' : st.length === ids.length && st.every(s => s === 'pass') ? 'pass' : 'warn';
@@ -106,7 +109,7 @@ async function showEnv() {
 
 // ---------- player ----------
 const video = $('#video'), audio = $('#audio');
-const player = createPlayer({ video, ytContainer: $('#yt'), audio, workerUrl: WORKER, getSecrets, lang: 'en', options: { muted: true } });
+const player = createPlayer({ video, ytContainer: $('#yt'), audio, workerUrl: WORKER, getSecrets, lang: 'en', options: { muted: true, debug: true } }); // debug: exposes the YouTube host so 6i can read its mute state
 let soundOn = false;
 $('#sound').onclick = () => { soundOn = !soundOn; player.setMuted(!soundOn); $('#sound').textContent = 'Sound: ' + (soundOn ? 'on' : 'off'); };
 document.addEventListener('pointerdown', () => player.unlock(), { once: true, capture: true });
@@ -116,7 +119,7 @@ function startSession(item, opts) {
   if (session) session.stop();
   const s = player.play(item, opts);
   s.events = [];
-  for (const t of ['progress', 'ready', 'stalled', 'resumed', 'time', 'ended', 'failed-all', 'report', 'paused', 'needs-tap']) s.addEventListener(t, e => s.events.push({ t, d: e.detail, at: performance.now() }));
+  for (const t of ['progress', 'ready', 'stalled', 'resumed', 'time', 'ended', 'failed-all', 'report', 'paused', 'needs-tap', 'ad', 'shield-tap']) s.addEventListener(t, e => s.events.push({ t, d: e.detail, at: performance.now() }));
   session = s;
   return s;
 }
@@ -144,30 +147,124 @@ function askHeard(id, base) {
   el.after(row);
 }
 
-// 6h: the same monetised video on each YouTube host; Daniel says whether an ad came first. Each answer is kept
-// (runs: [...]) so two runs per host can be compared.
-async function adsOnHost(host) {
-  const id = 'yt-ads-' + host; clearLog(id); record(id, 'run', { runs: results.steps[id]?.runs || [] });
+// 6h and 6j: the same monetised video on each YouTube host. The player's own ad detection is noted, then Daniel
+// confirms. Each answer is kept (runs: [...]) so several runs per host can be compared.
+async function adsOnHost(host, id = 'yt-ads-' + host, app = false) {
+  clearLog(id); document.querySelector(`[data-ask="${id}"]`)?.remove();
+  const runs0 = () => results.steps[id]?.runs || [];
+  record(id, 'run', { runs: runs0() });
   const t0 = performance.now();
   const s = startSession({ kind: 'youtube', ytId: YT_IDS[0] }, { youtubeHost: host });
-  const r = await waitFor(s, ['ready', 'needs-tap', 'failed-all'], 15000);
-  if (r?.t === 'failed-all') { log(id, 'did not play: ' + JSON.stringify(r.d?.reasons)); return record(id, 'fail', { runs: results.steps[id]?.runs || [], reasons: r.d?.reasons }); }
-  log(id, r?.t === 'ready' ? `playing after ${Math.round(performance.now() - t0)} ms` : 'YouTube is showing its own screen: an ad, or a play button to tap.');
+  let adsSeen = 0;
+  s.addEventListener('ad', e => { if (e.detail.active) adsSeen++; });
+  let r = await waitFor(s, ['ready', 'needs-tap', 'failed-all'], 15000);
+  if (r?.t === 'failed-all') { log(id, 'did not play: ' + JSON.stringify(r.d?.reasons)); return record(id, 'fail', { runs: runs0(), reasons: r.d?.reasons }); }
+  if (r?.t !== 'ready') {
+    log(id, 'YouTube is showing its own screen: an ad (wait, or press Skip), or a play button to tap.');
+    r = await waitFor(s, ['ready', 'failed-all'], 60000);
+  }
+  if (r?.t === 'ready') log(id, `the video is playing, ${Math.round(performance.now() - t0)} ms after the tap`);
+  await sleep(1500);
+  log(id, adsSeen ? `the player saw ${adsSeen} ad${adsSeen > 1 ? 's' : ''}` : 'the player saw no ad');
   const el = document.querySelector(`[data-log="${id}"]`);
-  const row = document.createElement('div'); row.className = 'row';
+  const row = document.createElement('div'); row.className = 'row'; row.dataset.ask = id;
   row.innerHTML = '<span class="hint">Ad before the video?</span><button>Yes</button><button>No</button>';
   const [yes, no] = row.querySelectorAll('button');
   const save = ad => {
-    const runs = [...(results.steps[id]?.runs || []), { ad, displayMode: results.env.displayMode, at: new Date().toISOString() }];
+    const extra = app ? { signedIn: results.steps['yt-app-signin']?.runs?.at(-1)?.finished ?? null, pcst: results.steps['yt-app-premium']?.pcst ?? null } : {};
+    const runs = [...runs0(), { ad, adDetected: adsSeen > 0, adsSeen, displayMode: results.env.displayMode, ...extra, at: new Date().toISOString() }];
     record(id, 'warn', { runs, ads: runs.filter(x => x.ad === 'yes').length, of: runs.length });
     row.remove();
-    const a = results.steps['yt-ads-nocookie'], b = results.steps['yt-ads-youtube'];
-    if (a?.runs?.length && b?.runs?.length) record('yt-premium', 'warn', { nocookie: `${a.ads}/${a.of} with ads`, youtube: `${b.ads}/${b.of} with ads` });
+    const pre = app ? 'yt-app-ads-' : 'yt-ads-', sum = app ? 'yt-app-premium' : 'yt-premium';
+    const a = results.steps[pre + 'nocookie'], b = results.steps[pre + 'youtube'];
+    const per = x => x?.runs?.length ? `${x.ads}/${x.of} with ads` : 'not run';
+    if (app || (a?.runs?.length && b?.runs?.length)) record(sum, 'warn', { ...(app ? results.steps[sum] : {}), nocookie: per(a), youtube: per(b) });
     s.stop();
   };
   yes.onclick = () => save('yes'); no.onclick = () => save('no');
   el.after(row);
 }
+
+// 6i: play with the clear layer on and watch the ad rule from outside: sample YouTube's mute state every 250 ms.
+let adIdx = 0, shieldSampler = null;
+function shieldRun() {
+  const id = 'yt-shield'; clearLog(id); document.querySelector(`[data-ask="${id}"]`)?.remove();
+  clearInterval(shieldSampler);
+  const ytId = AD_IDS[adIdx++ % AD_IDS.length];
+  const s = startSession({ kind: 'youtube', ytId }, { ytShield: true, ytAdMute: true });
+  const st = { video: adIdx, soundOn, ads: 0, adSeconds: 0, adSamples: 0, adSamplesUnmuted: 0, contentSamples: 0, contentSamplesMuted: 0, shieldTaps: 0, adSound: null, soundBack: null };
+  let ad = false, adAt = 0, ready = false, asked = false, readyAt = 0, noAdNoted = false;
+  const judge = () => {
+    if (st.adSound === 'heard' || st.soundBack === 'no' || st.adSamplesUnmuted > 2 || st.contentSamplesMuted > 2) return 'fail';
+    return st.ads && st.adSound === 'silent' && st.soundBack === 'yes' && !st.adSamplesUnmuted && !st.contentSamplesMuted ? 'pass' : 'warn';
+  };
+  const save = () => record(id, judge(), { ...st, soundOn });
+  record(id, 'run', st);
+  log(id, `video ${adIdx} of ${AD_IDS.length}, layer on`);
+  const yt = () => globalThis.__kcYt;
+  s.addEventListener('ad', e => {
+    ad = e.detail.active;
+    if (ad) { st.ads++; adAt = performance.now(); const k = st.ads; log(id, `ad ${k} started`); setTimeout(() => log(id, `ad ${k}: sound ${yt()?.isMuted() ? 'off' : 'ON'}`), 400); }
+    else { st.adSeconds = Math.round(st.adSeconds + (performance.now() - adAt) / 1000); log(id, `ad ${st.ads} over after ${Math.round((performance.now() - adAt) / 1000)} s`); }
+    save();
+  });
+  s.addEventListener('shield-tap', e => { st.shieldTaps++; log(id, `tap caught by the layer at ${Math.round(e.detail.x * 100)}%, ${Math.round(e.detail.y * 100)}%`); save(); });
+  s.addEventListener('ready', () => { ready = true; readyAt = performance.now(); setTimeout(() => log(id, `video playing: sound ${yt()?.isMuted() ? 'off' : 'on'}`), 600); });
+  s.addEventListener('failed-all', e => { log(id, 'did not play: ' + JSON.stringify(e.detail?.reasons)); record(id, 'fail', { ...st, reasons: e.detail?.reasons }); });
+  let n = 0;
+  shieldSampler = setInterval(() => {
+    if (session !== s) return clearInterval(shieldSampler);
+    const h = yt(); if (!h) return;
+    if (ad) { st.adSamples++; if (!h.isMuted()) st.adSamplesUnmuted++; }
+    else if (ready && soundOn) { st.contentSamples++; if (h.isMuted()) st.contentSamplesMuted++; }
+    if (++n % 4 === 0) save();
+    if (ready && !ad && !asked && st.ads && performance.now() - readyAt > 2500) { asked = true; askAdSound(id, st, save); }
+    if (ready && !st.ads && !noAdNoted && performance.now() - readyAt > 20000) { noAdNoted = true; log(id, 'no ad this time: tap Play with the layer again for the next video'); }
+  }, 250);
+}
+function askAdSound(id, st, save) {
+  const el = document.querySelector(`[data-log="${id}"]`);
+  const row = document.createElement('div'); row.className = 'row'; row.dataset.ask = id;
+  row.innerHTML = '<span class="hint">The ad was</span><button data-v="silent">Silent</button><button data-v="heard">Heard it</button><button data-v="off">Sound was off</button>' +
+    '<span class="hint">Video playing with sound now?</span><button data-s="yes">Yes</button><button data-s="no">No</button><button data-s="off">Sound was off</button>';
+  for (const b of row.querySelectorAll('[data-v]')) b.onclick = () => { st.adSound = b.dataset.v; for (const x of row.querySelectorAll('[data-v]')) x.disabled = true; done(); };
+  for (const b of row.querySelectorAll('[data-s]')) b.onclick = () => { st.soundBack = b.dataset.s; for (const x of row.querySelectorAll('[data-s]')) x.disabled = true; done(); };
+  const done = () => { save(); if (st.adSound && st.soundBack) row.remove(); };
+  el.after(row);
+}
+
+// 6j: sign in to YouTube from inside the Home Screen app. The attempt is noted before leaving, so the question
+// waits for Daniel whether the page survives (new window) or reloads (same window, or the app was reopened).
+async function signin(method) {
+  const w = method === 'window.open' ? window.open(SIGNIN, '_blank') : null; // inside the tap, before any await
+  await kv('put', 'premiumAttempt', { method, displayMode: results.env.displayMode || null, at: new Date().toISOString(), opened: method === 'window.open' ? !!w : null });
+  if (method === 'window.open') return askSignin();
+  location.href = method === 'check' ? 'https://www.youtube.com/' : SIGNIN;
+}
+async function askSignin() {
+  const p = await kv('get', 'premiumAttempt');
+  if (!p || document.querySelector('[data-ask="yt-signin"]')) return;
+  const el = document.querySelector('[data-log="yt-signin"]');
+  const check = p.method === 'check';
+  const row = document.createElement('div'); row.className = 'row'; row.dataset.ask = 'yt-signin';
+  row.innerHTML = `<span class="hint">${check ? 'youtube.com' : 'The sign-in'} opened</span>` +
+    '<button data-where="overlay">Inside the app, with a Done or close bar</button><button data-where="safari">In Safari</button><button data-where="app">Inside the app, no way back</button><button data-where="none">It didn\'t open</button>' +
+    (check ? '<span class="hint">Signed in there?</span><button data-done="yes">Signed in</button><button data-done="no">Not signed in</button>'
+      : '<span class="hint">Did you finish signing in?</span><button data-done="yes">Yes</button><button data-done="no">No</button>');
+  const a = {};
+  const done = async () => {
+    if (!a.openedIn || !a.done) return;
+    const runs = [...(results.steps['yt-app-signin']?.runs || []), { method: p.method, displayMode: p.displayMode, displayModeNow: results.env.displayMode, openedIn: a.openedIn, [check ? 'signedInThere' : 'finished']: a.done, at: new Date().toISOString() }];
+    await kv('del', 'premiumAttempt');
+    record('yt-app-signin', 'warn', { runs });
+    log('yt-signin', `${p.method}: opened ${a.openedIn}, ${check ? 'signed in there' : 'finished'}: ${a.done}`);
+    row.remove();
+  };
+  for (const b of row.querySelectorAll('[data-where]')) b.onclick = () => { a.openedIn = b.dataset.where; for (const x of row.querySelectorAll('[data-where]')) x.disabled = true; done(); };
+  for (const b of row.querySelectorAll('[data-done]')) b.onclick = () => { a.done = b.dataset.done; for (const x of row.querySelectorAll('[data-done]')) x.disabled = true; done(); };
+  el.after(row);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') askSignin(); });
 
 function askAd(id) {
   const el = document.querySelector(`[data-log="${id}"]`);
@@ -293,6 +390,26 @@ const RUNS = {
     }
     record(id, out.forward.ok && out.back.ok ? 'pass' : 'fail', out);
   },
+  async 'yt-seek-paused'() {
+    const id = 'yt-seek-paused'; clearLog(id); record(id, 'run');
+    if (!ytPlaying()) { log(id, 'start a video first (6a)'); return record(id, 'fail', { reason: 'not playing' }); }
+    session.pause();
+    await waitFor(session, ['paused'], 4000); await sleep(500);
+    const p0 = session.position();
+    session.seekBy(15);
+    await sleep(800);
+    const before = session.events.length;
+    session.resume();
+    const t0 = performance.now();
+    let p1 = p0;
+    while (performance.now() - t0 < 10000) { await sleep(250); p1 = currentYtPos(); if (p1 - p0 > 13) break; }
+    await sleep(1500); p1 = currentYtPos();
+    const played = session.events.slice(before).some(e => e.t === 'resumed' || e.t === 'ready');
+    const moved = +(p1 - p0).toFixed(1);
+    const ok = moved > 14 && moved < 20 && played;
+    log(id, `paused at ${p0.toFixed(1)} s, +15, resumed: now ${p1.toFixed(1)} s (${moved} s on), playing again: ${played}`);
+    record(id, ok ? 'pass' : 'fail', { movedSec: moved, playingAgain: played });
+  },
   async 'yt-skip'() {
     const id = 'yt-skip'; clearLog(id); record(id, 'run');
     const t0 = performance.now();
@@ -324,6 +441,13 @@ const RUNS = {
   },
   'yt-ads-nocookie': () => adsOnHost('nocookie'),
   'yt-ads-youtube': () => adsOnHost('youtube'),
+  'yt-shield': () => shieldRun(),
+  'yt-shield-stop': () => { clearInterval(shieldSampler); if (session) session.stop(); },
+  'yt-signin-same': () => signin('same-window'),
+  'yt-signin-window': () => signin('window.open'),
+  'yt-signin-check': () => signin('check'),
+  'yt-app-ads-nocookie': () => adsOnHost('nocookie', 'yt-app-ads-nocookie', true),
+  'yt-app-ads-youtube': () => adsOnHost('youtube', 'yt-app-ads-youtube', true),
   'audio-stop': () => { if (session) session.stop(); },
   async 'audio-lock'() {
     const id = 'audio-lock'; clearLog(id); record(id, 'run');
@@ -401,8 +525,62 @@ function saveExit(k, outcome, list, summaryId) {
   }
 }
 
+// 6i ways out with the clear layer on. No exemptions: the logo is covered too. A tap the layer catches and a
+// Skip that ends the ad are recorded without asking.
+const SHIELD_EXITS = [
+  ['sh-logo', 'YouTube logo (bottom right)'], ['sh-title', 'Video title or channel picture (top)'],
+  ['sh-more', '"More videos" or anything along the bottom'], ['sh-picture', 'A tap on the picture itself'], ['sh-long', 'A long press on the picture'],
+  ['sh-ad-link', 'Ad: the advertiser name or "Visit advertiser"'], ['sh-ad-info', 'Ad: the (i), "Sponsored" or "Why this ad"'],
+  ['sh-ad-picture', 'Ad: a tap on the left half of the ad picture'], ['sh-ad-corner', 'Ad: the bottom-right quarter away from Skip (left open for Skip)'],
+  ['sh-ad-skip', 'Ad: the Skip button (should skip)'],
+];
+function renderShieldExits() {
+  $('#exits3').innerHTML = SHIELD_EXITS.map(([k, label]) => `<tr data-exit="${k}"><td>${label}</td><td><button data-arm="${k}">Arm</button></td><td class="res">${results.steps['exit-' + k]?.outcome || ''}</td></tr>`).join('');
+  for (const b of $('#exits3').querySelectorAll('[data-arm]')) b.onclick = () => armShield(b.dataset.arm);
+}
+function armShield(k) {
+  const cell = document.querySelector(`[data-exit="${k}"] .res`);
+  cell.textContent = `armed: tap it now (${Math.round(ARM_MS / 1000)} s)`;
+  const s = session;
+  let left = false, caught = false, skipped = false;
+  const onTap = () => { caught = true; }, onAd = e => { if (!e.detail.active) skipped = true; };
+  const onHide = () => { if (document.visibilityState === 'hidden') left = true; }, onPageHide = () => { left = true; };
+  s?.addEventListener('shield-tap', onTap); s?.addEventListener('ad', onAd);
+  document.addEventListener('visibilitychange', onHide); addEventListener('pagehide', onPageHide);
+  setTimeout(() => {
+    s?.removeEventListener('shield-tap', onTap); s?.removeEventListener('ad', onAd);
+    document.removeEventListener('visibilitychange', onHide); removeEventListener('pagehide', onPageHide);
+    if (left) return saveShield(k, 'left the app');
+    if (k === 'sh-ad-skip' && skipped && !caught) return saveShield(k, 'skipped');
+    if (caught) return saveShield(k, 'caught by the layer');
+    cell.innerHTML = '<button>Not there</button> <button>Nothing</button> <button>Changed inside the player</button>';
+    const [a, b, c] = cell.querySelectorAll('button');
+    a.onclick = () => saveShield(k, 'not visible'); b.onclick = () => saveShield(k, 'nothing happened'); c.onclick = () => saveShield(k, 'changed inside the player');
+  }, ARM_MS);
+}
+function judgeShield(k, outcome) {
+  if (k === 'sh-ad-skip') return outcome === 'skipped' ? 'pass' : outcome === 'not visible' || outcome === 'nothing happened' ? 'warn' : 'fail';
+  return outcome === 'left the app' || outcome === 'changed inside the player' ? 'fail' : 'pass';
+}
+function saveShield(k, outcome) {
+  record('exit-' + k, judgeShield(k, outcome), { outcome, layer: true });
+  document.querySelector(`[data-exit="${k}"] .res`).textContent = outcome;
+  const done = SHIELD_EXITS.map(([x]) => results.steps['exit-' + x]).filter(Boolean);
+  const out = SHIELD_EXITS.filter(([x]) => x !== 'sh-ad-skip' && results.steps['exit-' + x]?.status === 'fail').map(([, l]) => l);
+  const skip = results.steps['exit-sh-ad-skip']?.outcome || null;
+  const status = done.some(d => d.status === 'fail') ? 'fail' : done.length === SHIELD_EXITS.length && done.every(d => d.status === 'pass') ? 'pass' : 'warn';
+  record('yt-shield-exits', status, { checked: done.length, of: SHIELD_EXITS.length, waysOut: out, skip });
+  clearLog('yt-shield-exits');
+  log('yt-shield-exits', out.length ? `Leads out with the layer on: ${out.join('; ')}.` : 'Nothing checked so far leads out with the layer on.');
+  if (skip === 'caught by the layer') log('yt-shield-exits', 'Skip was covered: the hole is in the wrong place on this iPad.');
+}
+
 // ---------- wiring ----------
 for (const b of document.querySelectorAll('[data-run]')) b.addEventListener('click', () => RUNS[b.dataset.run]?.());
+for (const b of document.querySelectorAll('[data-pcst]')) b.addEventListener('click', () => {
+  record('yt-app-premium', 'warn', { ...(results.steps['yt-app-premium'] || {}), pcst: b.dataset.pcst });
+  $('#pa-pcst').textContent = 'recorded: ' + b.dataset.pcst;
+});
 $('#save').onclick = async () => {
   const cfg = $('#cfg').value.trim(), tok = $('#tok').value.trim();
   if (!cfg || !tok) return record('settings', 'fail', { reason: 'both fields needed' });
@@ -420,6 +598,10 @@ $('#reset').onclick = async () => { results = { env: results.env, steps: {} }; a
   await showEnv();
   renderExits('#exits', EXITS, 'yt-exits');
   renderExits('#exits2', SCREEN_EXITS, 'yt-screens');
+  renderShieldExits();
+  $('#pa-mode').textContent = results.env.displayMode === 'home screen app' ? 'the Home Screen app' : 'a Safari tab (open the Home Screen copy for this step)';
+  if (results.steps['yt-app-premium']?.pcst) $('#pa-pcst').textContent = 'recorded: ' + results.steps['yt-app-premium'].pcst;
+  askSignin();
   const s = await getSecrets();
   if (s.torrentioConfig && s.appToken) { $('#cfg').placeholder = 'saved on this device'; $('#tok').placeholder = 'saved on this device'; record('settings', 'pass', { saved: true }); }
   try { await navigator.storage?.persist?.(); } catch { /* fine */ }

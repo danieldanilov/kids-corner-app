@@ -205,7 +205,9 @@ export function createPlayUI(app) {
     on('needs-tap', () => showYouTubeOwn(my));
     // A tap on the playing YouTube video lands on the clear layer: pause through the session, as a touch on TorBox
     // video does; the 'paused' that follows hides the frame and shows our overlay (4.5, 4.6).
-    on('shield-tap', () => { if (my.ready && !my.paused && !layer.classList.contains('needs-tap')) { autoHide.guardTaps(); my.session.pause(); } });
+    // The pause screen shows at once through doPause(), whether or not YouTube confirms: buffering, it may never
+    // answer pauseVideo(), and she must never be left on black with no way back (review app-v8 S1).
+    on('shield-tap', () => { if (my.ready && !my.paused && !layer.classList.contains('needs-tap')) { autoHide.guardTaps(); doPause(); } });
     // An ad (4.8): YouTube's own screen with only our back arrow, muted by the player; when it ends, the content
     // plays with its sound back and nothing of ours over it.
     on('ad', (d) => {

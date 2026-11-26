@@ -34,7 +34,7 @@ export function createFakePlayer({ fake, ytContainer = null }) {
         });
       }
       const adMs = yt ? (cfg.adMs || 0) : 0;
-      let inAd = false, adPaused = false;
+      let inAd = false, adPaused = false, stuck = false;
       const adStart = () => { inAd = true; skipHole(true); if (ytAdMute) setMuted(true); emit('ad', { active: true }); };
       const adEnd = () => { inAd = false; skipHole(false); if (ytAdMute) setMuted(false); emit('ad', { active: false }); };
       // cfg.midAd {afterMs, ms}: an ad partway into the content (no 'ready' after it, only 'ad' false).
@@ -52,8 +52,10 @@ export function createFakePlayer({ fake, ytContainer = null }) {
         if (failAll) { emit('failed-all', { reasons: cfg.failReasons || ['probe-duration', 'no-cached-stream'], ...(cfg.failKind ? { kind: cfg.failKind } : {}) }); return; }
         emit('ready'); playing = true;
         emit('report', { ttffMs: loadMs, fileSize: 141000000, container: 'mp4', path: 'direct', candidate: { name: '[TB+] Torrentio 1080p', filename: 'Fake.S01E01.mp4', url: 'https://cdn.example/x' }, fallbacks: [{ reason: 'probe-duration', filename: 'Wrong.mkv' }], failures: [] });
+        // cfg.stuckAt ms after the start: YouTube buffers for good (no more time) and ignores pauseVideo() (review S1).
+        if (yt && cfg.stuckAt != null) later(cfg.stuckAt, () => { stuck = true; emit('stalled', {}); });
         const tick = setInterval(() => {
-          if (!playing) return;
+          if (!playing || stuck) return;
           pos += 0.5;
           emit('time', { position: pos, duration: lengthS });
           if (pos >= lengthS) { clearInterval(tick); playing = false; emit('ended'); }
@@ -70,8 +72,9 @@ export function createFakePlayer({ fake, ytContainer = null }) {
       globalThis.__kcFakeSession = t;   // tests can act as YouTube's own pause (a touch on the iframe)
       return Object.assign(t, {
         get inAd() { return inAd; },
+        get stuck() { return stuck; },
         // In an ad (player contract): pause emits 'paused' {ad:true}; resume carries the ad on and emits 'ad' again.
-        pause() { if (inAd) { adPaused = true; emit('paused', { ad: true }); return; } if (playing) { playing = false; emit('paused', {}); } },
+        pause() { if (stuck) return; if (inAd) { adPaused = true; emit('paused', { ad: true }); return; } if (playing) { playing = false; emit('paused', {}); } },
         resume() { if (inAd) { adPaused = false; emit('ad', { active: true }); return; } playing = true; emit('resumed'); },   // like the real player
         seekBy(d) { (globalThis.__kcSeekBy = globalThis.__kcSeekBy || []).push(d); pos = Math.max(0, Math.min(lengthS, pos + d)); return pos; },
         position() { return pos; },

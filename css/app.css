@@ -91,12 +91,15 @@ svg { display: block; }
 
 /* ---------- home ---------- */
 .preview-tag { position: absolute; top: 84px; right: 22px; font-size: 11px; font-weight: 700; color: var(--ink-2); opacity: .7; pointer-events: none; }
-.home-top { position: absolute; top: 24px; left: var(--gutter); display: flex; gap: 6px; }   /* spec 4.1 v5: Pom, 7 chips, search, 6 px gaps */
+.home-top { position: absolute; top: 24px; left: var(--gutter); right: var(--gutter); display: flex; gap: 6px; }   /* spec 4.1 v5: Pom, 7 chips, search, 6 px gaps */
 .chip.srch { --c: var(--card); --l: var(--srch-lip); color: var(--ink); }
 .chip.srch .art svg { width: 64px; height: 64px; }
 .chip.srch .word { color: var(--ink); }
-.home-top .chip[data-id="learn"] { position: absolute; left: 1010px; top: 144px; }   /* spec 4.1 v7: Learn at (1042, 168), under the full header row */
-.home-top .chip.srch { position: absolute; left: 1010px; top: 288px; }               /* search at (1042, 312), under Learn */
+/* Spec 4.1 v7: Learn under the header row and search under Learn, in the right-hand column a gutter in from the
+   window's right edge, so the rows (which end 168 px from that edge) never cover them at any width (Daniel's wide
+   window). At 1194 x 834 this is (1042, 168) and (1042, 312). */
+.home-top .chip[data-id="learn"] { position: absolute; right: 0; top: 144px; }
+.home-top .chip.srch { position: absolute; right: 0; top: 288px; }
 .home .lock { top: 456px; right: 32px; width: 52px; height: 52px; }   /* (1110, 456): under search, right-aligned with it */
 .home .rows { right: 168px; }                                         /* rows end at x 1026, leaving that column free */
 .pom-tile, .chip { width: 120px; height: 128px; border-radius: 28px; }
@@ -107,7 +110,7 @@ svg { display: block; }
 .chip .art svg { width: 72px; height: 72px; }
 .chip .word { font-size: 17px; color: var(--chip-ink); line-height: 1; white-space: nowrap; }
 .chip.lit { outline: 5px solid var(--focus); outline-offset: 3px; }
-.show-dots { position: absolute; top: 92px; right: 30px; display: flex; gap: 6px; }
+.show-dots { position: absolute; top: 92px; right: 30px; display: flex; gap: 6px; pointer-events: none; }   /* shows only; never in a chip's way */
 .show-dots span, .rail-dots span { width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--ink-2); }
 .show-dots span.full, .rail-dots span.full { background: var(--ink-2); }
 
@@ -409,6 +412,18 @@ table.report tr.bad td { color: #B4552F; }
 .sempty { position: absolute; left: 0; right: 0; top: 220px; display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--ink-2); font-size: 16px; font-weight: 700; pointer-events: none; }
 .sempty .pom { width: 200px; height: 200px; }
 .sempty .lens .icon { width: 64px; height: 64px; color: var(--ink-2); }
+
+/* ---------- a landscape window too narrow for the header row (Pom and 7 chips need 1002 px plus the gutters) ----------
+   The home header takes the portrait grid, so every chip stays inside the window and clear of the rows. */
+@media (orientation: landscape) and (max-width: 1065px) {
+  .home .lock { top: 18px; right: 28px; width: 56px; height: 56px; }
+  .home .show-dots { top: 30px; right: 100px; }
+  .home-top { top: 84px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .home-top .pom-tile, .home-top .chip { width: auto; }
+  .home-top .chip[data-id="learn"] { position: static; }
+  .home-top .chip.srch { position: static; grid-column: 6; }
+  .home .rows { top: 380px; right: var(--gutter); }
+}
 
 /* ---------- portrait (834 x 1194) ---------- */
 @media (orientation: portrait) {

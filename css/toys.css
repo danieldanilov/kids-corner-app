@@ -117,3 +117,10 @@
 .mtoy .cur{pointer-events:none}
 .mtoy .cur .cur-hit{position:absolute;left:0;right:0;top:0;bottom:64px;pointer-events:auto}
 .mtoy .bigbub,.mtoy .puff,.mtoy .puffc,.mtoy .drops,.mtoy .drop,.mtoy .fimg,.mtoy .glow,.mtoy .toy-bg,.mtoy .valance,.mtoy .bulbs{pointer-events:none}
+
+/* Night scenes in the dark theme (spec 2.1 v8, 5.5); the light theme keeps the bright ones, bedtime uses the moon */
+:root[data-theme="dark"] .mtoy .owl-sky{background:linear-gradient(#1B2742,#2E4A72 60%,#45678F)}
+:root[data-theme="dark"] .mtoy .bub-sky{background:linear-gradient(#172338,#25395A)}
+:root[data-theme="dark"] .mtoy .sun-bg{background:linear-gradient(#2A2118,#3A2C1C)}
+:root[data-theme="dark"] .mtoy .jelly-bg{background:linear-gradient(#12302A,#1B4338)}
+:root[data-theme="dark"] .mtoy .train-bg{background:linear-gradient(#1D2944 0,#33476B 55%,#3F6B33 55.1%,#2F5527 100%)}

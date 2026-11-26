@@ -1,7 +1,7 @@
 // The player flow (spec 4.5-4.7, 5, 7): loading moment with the category toy, the rail, pause screen,
 // stall state, goodbye card, sleeping card, limits at episode ends, progress, watch time and the play log.
 import { playItemFor, kindOf, musicData, titleClipId } from './data.js';
-import { youtubeHostFor, isSetupReason, isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
+import { failureCounts, youtubeHostFor, isSetupReason, isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
 import { sanitizeReport, secretValues } from './secrets.js';
 import { mountToy, toyFor } from './toys.js';
 import { pom, ICONS, CHIP_ART } from './art.js';
@@ -44,6 +44,9 @@ export function createPlayUI(app) {
     <div class="pause-tiles"></div>
     <div class="pause-pom" aria-hidden="true"></div>
     <div class="stall-pom" aria-hidden="true">${pom('day', 'breathe')}</div>
+    <div class="skip-pop rew" aria-hidden="true">−15</div>
+    <div class="skip-pop fwd" aria-hidden="true">+15</div>
+    <div class="pos-bar" aria-hidden="true"><div class="trk"><div class="fil"></div></div><div class="tm"></div></div>
     <div class="rail-dots"></div>`;
 
   function itemFor(data, v) {
@@ -55,6 +58,23 @@ export function createPlayUI(app) {
     } else if (t.type === 'Audio') stream = app.streamReady.get(`${t.type}/${v.id}`) || null;
     else if (t.type === 'Music') stream = { ytId: v.ytId };   // kc.music.<videoId>: the id is the YouTube id
     return playItemFor(t, v, { lang: app.langOf(t.id), stream });
+  }
+
+  // Skip feedback (4.5): the "+15" / "−15" pill restarts on every tap. The position bar (4.6) shows where she is.
+  const mmss = (s) => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  function popSkip(dir) {
+    const e = rail.querySelector(`.skip-pop.${dir}`);
+    e.classList.remove('go'); void e.offsetWidth; e.classList.add('go');
+  }
+  function setBar(c) {
+    if (!c) return;
+    const b = rail.querySelector('.pos-bar'), dur = c.duration || 0;
+    b.classList.toggle('nodur', !(dur > 0));
+    if (!(dur > 0)) return;
+    const own = typeof c.session?.position === 'function' ? c.session.position() : NaN;
+    const pos = Math.max(0, Math.min(dur, Number.isFinite(own) ? own : c.position || 0));
+    b.querySelector('.fil').style.width = `${(100 * pos / dur).toFixed(2)}%`;
+    b.querySelector('.tm').textContent = `${mmss(pos)} / ${mmss(dur)}`;
   }
 
   const reportSecrets = async () => secretValues(await app.store.getSecrets());
@@ -121,7 +141,7 @@ export function createPlayUI(app) {
   }
 
   function teardown() {
-    layer.classList.remove('needs-tap', 'controls-hidden', 'paused', 'stalled', 'tap-guard');
+    layer.classList.remove('needs-tap', 'yt-ad', 'controls-hidden', 'paused', 'stalled', 'tap-guard');
     autoHide.setPlaying(false);
     document.getElementById('kc-yt').style.visibility = '';
     if (!ctx) return;
@@ -157,7 +177,10 @@ export function createPlayUI(app) {
     setRail();
     if (from) { from.classList.add('launch'); setTimeout(() => from.classList.remove('launch'), 400); }
 
-    const s = app.player.play(item, { startAt, youtubeHost: youtubeHostFor(app.settings) });   // the switch applies from the next play
+    // YouTube v2 (player/README.md, spec 4.5): the clear layer over every YouTube play, so no tap reaches YouTube's
+    // out-links (a tap comes back as 'shield-tap'), and ads muted with the sound back for the content.
+    const yt = item.kind === 'youtube';
+    const s = app.player.play(item, { startAt, youtubeHost: youtubeHostFor(app.settings), ...(yt ? { ytShield: true, ytAdMute: true } : {}) });   // the host switch applies from the next play
     ctx.session = s;
     app.playing = true;
     if (item.kind === 'audio') { cover.innerHTML = `<div class="cover-art" data-cat="${cat}"><img src="${item.artwork || data.title.poster || ''}" alt="" onerror="this.remove()"></div>`; setupMedia(item, data); wake(true); }
@@ -172,26 +195,39 @@ export function createPlayUI(app) {
     on('progress', (d) => { my.lastProgress = d.fraction; my.toy?.setProgress(d.fraction); });
     on('ready', () => { if (my.item.kind === 'torbox') app.torboxKeyProven = true; playingNow(my); onReady(my); });   // proof the TorBox key works this session
     on('time', (d) => onTime(my, d));
-    on('paused', () => { autoHide.setPlaying(false); onPaused(my); });
+    on('paused', (d) => { autoHide.setPlaying(false); onPaused(my, d); });
     // Stalled more than 1 s (4.7): the controls show and stay, Pom breathes small bottom-right. YouTube buffers inside its own player.
     on('stalled', () => { if (my.item.kind === 'youtube') return; clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => { if (ctx === my) { layer.classList.add('stalled'); autoHide.setPlaying(false); } }, 1000); });
     on('resumed', () => { clearTimeout(my.stallTimer); layer.classList.remove('stalled'); if (my.paused) { my.paused = false; endPause(); setRail(); } playingNow(my); });
     on('ended', () => onEnded(my));
-    on('needs-tap', async () => {
-      clearTimeout(my.toyTimer);
-      if (my.toy) {   // spec 4.8: the toy fades out over 300 ms, no match cut (the video isn't playing yet)
-        toyLayer.style.setProperty('--fade', '300ms'); toyLayer.classList.add('fading');
-        await wait(300);
-        if (ctx !== my) return;
-        my.toy?.destroy(); my.toy = null;
-      }
-      toyLayer.classList.remove('open', 'fading');
-      pauseEl.classList.remove('open'); layer.classList.remove('paused', 'stalled');
-      autoHide.setPlaying(false);
-      layer.classList.add('needs-tap');
+    on('needs-tap', () => showYouTubeOwn(my));
+    // A tap on the playing YouTube video lands on the clear layer: pause through the session, as a touch on TorBox
+    // video does; the 'paused' that follows hides the frame and shows our overlay (4.5, 4.6).
+    on('shield-tap', () => { if (my.ready && !my.paused && !layer.classList.contains('needs-tap')) { autoHide.guardTaps(); my.session.pause(); } });
+    // An ad (4.8): YouTube's own screen with only our back arrow, muted by the player; when it ends, the content
+    // plays with its sound back and nothing of ours over it.
+    on('ad', (d) => {
+      if (d.active) { showYouTubeOwn(my); layer.classList.add('yt-ad'); }
+      else { layer.classList.remove('yt-ad', 'needs-tap'); if (my.ready && !my.paused) playingNow(my); }
     });
-    on('failed-all', (d) => fail(d.reasons || [], my));
+    on('failed-all', (d) => fail(d.reasons || [], my, d));
     on('report', (d) => { if (d.playId && !my.playerPlayId) { my.playerPlayId = d.playId; } const { playId, ...rest } = d; logPlay({ ...rest, playerPlayId: playId }, my); });
+  }
+
+  // YouTube's own screen (spec 4.8): its start screen waiting for her tap, or an ad. The toy fades out over 300 ms
+  // (no match cut: the content isn't playing yet); only our back arrow shows, in the top band.
+  async function showYouTubeOwn(my) {
+    clearTimeout(my.toyTimer);
+    if (my.toy) {
+      toyLayer.style.setProperty('--fade', '300ms'); toyLayer.classList.add('fading');
+      await wait(300);
+      if (ctx !== my) return;
+      my.toy?.destroy(); my.toy = null;
+    }
+    toyLayer.classList.remove('open', 'fading');
+    pauseEl.classList.remove('open'); layer.classList.remove('paused', 'stalled');
+    autoHide.setPlaying(false);
+    layer.classList.add('needs-tap');
   }
 
   // Match cut (spec 5.5): the player, already playing underneath, is revealed from a point in the toy.
@@ -248,12 +284,17 @@ export function createPlayUI(app) {
     c.lastTick = now; c.lastPos = position;
     c.position = position;
     if (duration > 0) c.duration = duration;
+    if (c.paused && c === ctx) setBar(c);
     if (Date.now() - c.lastSave > SAVE_EVERY_MS) { saveProgress(); app.saveUsage(); }
     // A movie set to "pause at the limit" stops here; a series episode always finishes.
     if (onPlaybackTick(app.usage, app.settings, c.item) === 'pause') leave('limit');
   }
 
-  function onPaused(c) {
+  function onPaused(c, d = {}) {
+    // Paused in an ad (leaving the app, QA bug 3): YouTube's own screen gives way to our pause screen with play; on
+    // play the player carries the ad on and sends 'ad' again, which brings its screen back.
+    if (c.item.kind === 'youtube' && (d.ad || c.session?.inAd || layer.classList.contains('yt-ad'))) layer.classList.remove('needs-tap', 'yt-ad');
+    if (c.item.kind === 'youtube' && !c.paused) autoHide.guardTaps();
     c.paused = true;
     autoHide.setPlaying(false);   // paused (4.6): the controls show and stay
     setRail();
@@ -263,6 +304,7 @@ export function createPlayUI(app) {
       `<button class="pause-tile tapable" data-i="${i}" data-dir="${dir}" data-cat="${c.cat}" aria-label="${dir}"><span class="fallback">${CHIP_ART[c.cat] || ''}</span>${v[i].thumbnail ? `<img src="${v[i].thumbnail}" alt="" onerror="this.remove()">` : ''}<span class="pause-arrow">${dir === 'previous' ? ICONS.prev : ICONS.next}</span></button>`;
     rail.querySelector('.pause-tiles').innerHTML = tile(c.index - 1, 'previous') + tile(c.index + 1, 'next');
     rail.querySelector('.pause-pom').innerHTML = pom(app.bedtime ? 'night' : 'day');
+    setBar(c);
     if (c.item.kind === 'youtube') {   // the iframe is hidden, never covered; its own still fills the screen
       document.getElementById('kc-yt').style.visibility = 'hidden';
       const still = v[c.index].thumbnail || c.data.title.background || c.data.title.poster || '';
@@ -296,9 +338,13 @@ export function createPlayUI(app) {
     else if (r === 'toggle') { app.effect('button'); ctx.paused ? doResume() : doPause(); }
     else if (r === 'back15' || r === 'fwd15') {
       app.effect('tick');
-      const to = Math.max(0, Math.min((ctx.duration || Infinity) - 1, ctx.position + (r === 'fwd15' ? 15 : -15)));
+      // From the real position at the tap (QA bug 10): the player's seekBy reads its own clock (or the held target).
+      const d = r === 'fwd15' ? 15 : -15;
+      const to = typeof ctx.session.seekBy === 'function' ? ctx.session.seekBy(d) : Math.max(0, Math.min((ctx.duration || Infinity) - 1, ctx.position + d));
+      if (typeof ctx.session.seekBy !== 'function') ctx.session.seek(to);
       ctx.position = to; ctx.lastPos = to;
-      ctx.session.seek(to);
+      popSkip(d > 0 ? 'fwd' : 'rew');
+      if (ctx.paused) setBar(ctx);   // paused, the fill moves at once (YouTube's seek lands on play)
     } else if (r === 'next' && ctx.index < ctx.videos.length - 1) {
       app.effect('button');
       const c = ctx; saveProgress(); logPlay({ endReason: 'next' });
@@ -352,13 +398,13 @@ export function createPlayUI(app) {
   }
 
   // Every candidate failed: Pom's sleeping card for 3 s, then the show page (spec 5.6).
-  async function fail(reasons, c) {
+  async function fail(reasons, c, verdict = {}) {
     if (c.failed) return;
     c.failed = true;
     const keyProven = !!app.torboxKeyProven;
     const setup = reasons.some(r => isSetupReason(r, { keyProven }));
     if (setup) app.setupHint = reasons.find(r => isSetupReason(r, { keyProven }));
-    else {
+    else if (failureCounts(c.item.kind, { ...verdict, reasons })) {   // a transient YouTube error hides nothing (QA bug 4)
       // A song that fails hides only itself, never the whole Music page.
       const failTitle = c.data.title.type === 'Music' ? c.item.videoId : c.data.title.id;
       app.failed = recordFailure(app.failed, { titleId: failTitle, videoId: c.item.videoId, type: c.data.title.type }, reasons, Date.now(), { keyProven });

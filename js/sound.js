@@ -22,6 +22,7 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
   let settings = { all: true, names: 'quiet', effects: 'quiet', namesLang: 'en-ru' };
   let bedtime = false;
   let files = new Set();          // paths under voice/ without extension: ui/<lang>/<key>, title/<id>
+  let versions = {};              // path -> content hash (index v3), so a re-recorded clip has a new URL
   const buffers = new Map();
   const lastEffect = {};
 
@@ -37,7 +38,8 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
     try {
       const r = await fetchImpl(base + 'index.json');
       const j = await r.json();
-      files = new Set(j.files || []);
+      if (Array.isArray(j.files)) { files = new Set(j.files); versions = {}; }   // v2: a list, no versions
+      else { files = new Set(Object.keys(j.files || {})); versions = j.files || {}; }
     } catch { /* no clips: silence */ }
   }
 
@@ -51,7 +53,7 @@ export function createSound({ fetchImpl = (...a) => fetch(...a), base = 'voice/'
     return buffers.get(url);
   }
 
-  const clip = (p) => `${base}${p.split('/').map(encodeURIComponent).join('/')}.m4a`;
+  const clip = (p) => `${base}${p.split('/').map(encodeURIComponent).join('/')}.m4a${versions[p] ? '?v=' + versions[p] : ''}`;
 
   return {
     loadIndex,

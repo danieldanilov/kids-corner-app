@@ -5,7 +5,7 @@ import { rankStreams } from './select.js';
 import { decide } from './probe.js';
 import { fetchStreams, fetchCinemeta, resolveViaWorker, scrubSecrets, listOutcome } from './sources.js';
 import { createMseSink, isTypeSupported, mediaSourceClass } from './mse.js';
-import { createYouTubeHost, YT_STATE, ytHostName } from './youtube.js';
+import { createYouTubeHost, YT_STATE, ytHostName, classifyAd, classifyYtError, desiredMute, holeFor } from './youtube.js';
 import { createLearned } from './learned.js';
 import { SILENT_MP4, SILENT_M4A } from './silent.js';
 
@@ -20,6 +20,10 @@ export const DEFAULTS = {
   warmMaxAgeMs: 30 * 60e3,
   ytEndGuardSec: 0.6,    // stop this close to the end so YouTube's end panel never shows
   ytNeedsTapMs: 2500,
+  ytShield: false,       // blocking layer over the YouTube player (Boss ruling 2026-11-25). Off until the app
+                         // handles 'shield-tap': with it on, a tap no longer reaches YouTube (so no tap-to-pause)
+  ytAdMute: true,        // mute while an ad plays; content always gets its sound back
+  ytSkipHole: true,      // keep YouTube's Skip button reachable during an ad (after 5 s)
 };
 
 const uid = () => (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -91,12 +95,14 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     if (!ytContainer) return null;
     if (yt && yt.host === name) return yt;
     if (yt) yt.destroy();
-    try { yt = createYouTubeHost(ytContainer, { muted: !!o.muted || mutedNow, host: name }); } catch { yt = null; }
+    try { yt = createYouTubeHost(ytContainer, { muted: mutedNow, host: name }); } catch { yt = null; }
     return yt;
   }
-  let mutedNow = false;
+  let mutedNow = !!o.muted; // options.muted is the starting state; setMuted() changes it
+  let ytAdHeld = false;     // a YouTube ad is playing under the ad-mute rule: setMuted(false) must not unmute it
   // Created early so the first YouTube tap lands on a ready player.
   ensureYt(wantedYtHost);
+  if (o.debug) Object.defineProperty(globalThis, '__kcYt', { get: () => yt, configurable: true });
   function setYouTubeHost(h) {
     wantedYtHost = ytHostName(h);
     if (!ytBusy) ensureYt(wantedYtHost); // warm the new host now, so its first tap is fast
@@ -230,7 +236,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
   }
 
   // ---- session ----
-  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false, youtubeHost: hostForPlay } = {}) {
+  function play(item, { startAt = 0, keepAwake = true, ytCueOnly = false, youtubeHost: hostForPlay, ytShield, ytAdMute } = {}) {
     if (current) current._stop('replaced');
     if (!unlocked) unlock();
     const s = new EventTarget();
@@ -257,16 +263,27 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       report(false);
     };
     let finished = false;
-    const finish = (reason, extra) => {
+    const finish = (reason, extra, more) => {
       if (finished) return;
       finished = true;
       rep.endReason = reason;
-      if (reason === 'failed-all') { emit('failed-all', { reasons: extra || rep.failures }); }
+      if (reason === 'failed-all') { emit('failed-all', { reasons: extra || rep.failures, ...(more || {}) }); }
       if (reason === 'ended') emit('ended', {});
       if (!readyEmitted && reason === 'failed-all') report(false);
       report(true);
     };
-    s._ctl = { pause() {}, resume() {}, seek() {} };
+    s._ctl = { pause() {}, resume() {}, seek() {}, position: () => 0, duration: () => 0, inAd: () => false };
+    // Where the play is now (YouTube's own clock, the media element's, or a seek still held while paused), and a
+    // relative jump from there, clamped to the start and to a second short of the end. Returns the new target.
+    s.position = () => s._ctl.position();
+    s.seekBy = d => {
+      const dur = s._ctl.duration();
+      let t = Math.max(0, s._ctl.position() + d);
+      if (dur > 1) t = Math.min(t, dur - 1);
+      s._ctl.seek(t);
+      return t;
+    };
+    Object.defineProperty(s, 'inAd', { get: () => !!s._ctl.inAd(), enumerable: true });
     s.pause = () => s._ctl.pause();
     s.resume = () => s._ctl.resume();
     s.seek = t => s._ctl.seek(t);
@@ -284,7 +301,10 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     if (kind === 'youtube') {
       ensureYt(hostForPlay != null ? ytHostName(hostForPlay) : wantedYtHost);
       rep.youtubeHost = yt?.host;
-      playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly });
+      // Per-play overrides of the player's YouTube policy (the testbed turns the layer on for one play).
+      const pol = { shield: !!(ytShield ?? o.ytShield), adMute: !!(ytAdMute ?? o.ytAdMute) };
+      rep.ytShield = pol.shield;
+      playYouTube(item, startAt, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f), cueOnly: ytCueOnly, pol });
     }
     else if (kind === 'audio') playAudio(item, startAt, keepAwake, s, { emit, rep, markReady, finish, cleanup: f => cleanup.push(f) });
     else if (kind === 'torbox' || kind === 'file') playTorbox(item, startAt, s, { emit, rep, markReady, finish, mark, cleanup: f => cleanup.push(f), isStopped: () => stopped });
@@ -366,6 +386,8 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     s._ctl.pause = () => { video.pause(); };
     s._ctl.resume = () => { video.play().catch(() => {}); };
     s._ctl.seek = t => { media?.seek ? media.seek(t) : (video.currentTime = t); };
+    s._ctl.position = () => video.currentTime || 0;
+    s._ctl.duration = () => (Number.isFinite(video.duration) && video.duration > 0 ? video.duration : rep.durationCheck?.probedSec || 0);
 
     async function attach(win, at, segments) {
       rep.path = win.d.path; rep.container = win.info.container; rep.durationCheck = win.d.durationCheck;
@@ -557,11 +579,40 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
 
   // ---- YouTube ----
   function playYouTube(item, startAt, s, ctx) {
-    const { emit, rep, markReady, finish, cleanup, cueOnly } = ctx;
+    const { emit, rep, markReady, finish, cleanup, cueOnly, pol } = ctx;
     rep.path = 'youtube';
     if (!yt) { rep.failures.push('no_yt_container'); queueMicrotask(() => finish('failed-all', ['no_yt_container'])); return; }
     let started = false, paused = false, endedByUs = false, stopping = false, lastSeek = null, seekRetried = false;
     let stallT = null, seekT = null, needsTapT = null, lastEmit = -1;
+    let ad = false, adStart = 0, needsTapShown = false, lastClock = null, seekOnMove = null, adPaused = false, errRetried = false, lastContent = startAt;
+    rep.ads = 0; rep.adSeconds = 0;
+    yt.resetProgress();
+    yt.shield(pol.shield);
+    if (!pol.adMute) (mutedNow ? yt.mute() : yt.unMute()); // a stopped play leaves the host muted
+    const applyPolicy = () => {
+      const st = yt.state(), t = yt.time();
+      const clockRunning = lastClock != null && t > lastClock + 0.05;
+      lastClock = t;
+      const nowAd = !endedByUs && classifyAd({ state: st, contentDuration: yt.duration(), progress: yt.progress(), clockRunning });
+      if (nowAd !== ad) {
+        ad = nowAd;
+        if (ad) { adStart = performance.now(); rep.ads++; clearT(); if (!paused && !adPaused) yt.show(true); } // the buffering before an ad is no stall
+        else { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); adPaused = false; }
+        emit('ad', { active: ad });
+        // YouTube can report PLAYING before its last ad message is replaced: re-read the state once the ad clears.
+        if (!ad) queueMicrotask(() => { if (!stopping) onStateImpl(yt.state()); });
+      }
+      // Once her video has started, YouTube leaving PLAYING (unstarted, buffering, cued) can be a mid-roll starting
+      // before its first message says so: mute at once, so the ad is silent from its first frame. Buffering has no
+      // sound to lose, and PLAYING content gets it back.
+      const quiet = started && !endedByUs && (st === YT_STATE.UNSTARTED || st === YT_STATE.BUFFERING || st === YT_STATE.CUED);
+      ytAdHeld = pol.adMute && (ad || quiet);
+      if (pol.adMute) {
+        const want = desiredMute({ ad: ad || quiet, appMuted: mutedNow });
+        if (want !== yt.isMuted()) (want ? yt.mute() : yt.unMute());
+      }
+      if (pol.shield) yt.shield(true, holeFor({ ad, adElapsed: ad ? (performance.now() - adStart) / 1000 : 0, needsTap: needsTapShown && !started, skipHole: o.ytSkipHole }));
+    };
     const clearT = () => { clearTimeout(stallT); clearTimeout(seekT); stallT = seekT = null; };
     const endNow = () => {
       if (endedByUs) return;
@@ -569,14 +620,18 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       finish('ended');
     };
     const poll = setInterval(() => {
+      applyPolicy();
+      if (ad) return; // during an ad the clock is the ad's: no time events, no end guard
       const t = yt.time(), d = yt.duration();
+      if (started && yt.state() === YT_STATE.PLAYING) lastContent = t;
       if (started) rep.watchedSec = Math.max(rep.watchedSec, Math.round(t - startAt));
       if (started && Math.abs(t - lastEmit) >= 1) { lastEmit = t; emit('time', { position: t, duration: d || null }); }
       if (started && !endedByUs && d > 0 && t >= d - o.ytEndGuardSec && yt.state() === YT_STATE.PLAYING) endNow();
     }, 250);
-    yt.setHandler({
-      onState(st) {
+    const onStateImpl = st => {
+        if (ad && st !== YT_STATE.ENDED) { if (!adPaused) yt.show(true); return; } // an ad is shown (muted, shielded), never read as pause or start
         if (endedByUs || stopping) { if (st !== YT_STATE.PAUSED && st !== YT_STATE.ENDED) yt.show(false); return; }
+        if (seekOnMove != null && (st === YT_STATE.PLAYING || st === YT_STATE.BUFFERING)) { const t = seekOnMove; seekOnMove = null; seekNow(t); }
         if (st === YT_STATE.PLAYING) {
           clearTimeout(needsTapT); clearT(); yt.show(true);
           if (!started) { started = true; markReady(); }
@@ -596,14 +651,29 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
         } else {
           yt.show(false);
         }
-      },
+    };
+    yt.setHandler({
+      onShieldTap(pt) { emit('shield-tap', pt); },
+      onInfo() { applyPolicy(); },
+      onState(st) { applyPolicy(); onStateImpl(st); },
       onError(code) {
         yt.show(false); clearT();
+        const kind = classifyYtError(code);
+        // A passing fault (error 5: often a mid-roll that failed to load) is retried once, from where her video was.
+        if (kind === 'transient' && !errRetried && !stopping && !endedByUs) {
+          errRetried = true; rep.ytRetries = (rep.ytRetries || 0) + 1;
+          if (ad) { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); ad = false; adPaused = false; emit('ad', { active: false }); }
+          yt.resetProgress(); lastClock = null;
+          if (started) emit('stalled', {});
+          yt.load(item.ytId || item.videoId, started ? lastContent : startAt || 0);
+          return;
+        }
         // 153: YouTube refuses an embed that sends no Referer, which a no-referrer policy on the page causes.
         const noRef = /no-referrer/i.test(document.querySelector('meta[name="referrer"]')?.content || '');
         const reason = code === 153 && noRef ? 'yt_153_referrer_policy' : 'yt_' + code;
         rep.failures.push(reason);
-        finish('failed-all', [reason]);
+        rep.ytError = { code, kind };
+        finish('failed-all', [reason], { kind, code });
       },
     });
     emit('progress', { fraction: null, stage: 'buffer' });
@@ -618,20 +688,44 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       if (started) return;
       const st = yt.state();
       if ((st === YT_STATE.BUFFERING || st === undefined) && ++tapChecks < 6) { needsTapT = setTimeout(checkTap, 1500); return; }
+      if (ad) { needsTapT = setTimeout(checkTap, 1500); return; } // an ad is playing: not a refused start
       if (st === YT_STATE.UNSTARTED || st === YT_STATE.CUED || tapChecks >= 6) {
-        rep.needsTap = true; yt.show(true);
+        rep.needsTap = true; needsTapShown = true; yt.show(true); applyPolicy();
         emit('needs-tap', { state: st, reason: st === YT_STATE.CUED ? 'tap' : 'tap_or_ad' });
       }
     };
     needsTapT = setTimeout(checkTap, o.ytNeedsTapMs + (sync ? 0 : 3000));
-    s._ctl.pause = () => { yt.show(false); yt.pause(); };
+    // Paused during an ad (her tap on the layer, the app going to the background): the ad waits, hidden, and the
+    // app gets 'paused' {ad:true} so it can show its pause screen; resume brings the ad back with 'ad' {active:true}.
+    s._ctl.pause = () => {
+      const adNow = ad && !adPaused;
+      if (adNow) adPaused = true; // before pausing: YouTube's state change may come back synchronously
+      yt.show(false); yt.pause();
+      if (adNow) emit('paused', { ad: true });
+    };
+    s._ctl.inAd = () => ad;
+    s._ctl.duration = () => yt.duration();
+    const seekNow = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
+    // A seek while paused (the app's +15/-15 live on its pause screen) is held and made at resume: YouTube may
+    // ignore a seek on a paused player, or start playing on it, and either would lose the jump or our pause screen.
+    // At resume it is made once YouTube is moving again (buffering or playing), since a paused player may ignore it.
+    let pendingSeek = null;
     // After our own end nothing may play again: the end panel would be one frame away.
-    s._ctl.resume = () => { if (endedByUs) return; yt.play(); };
-    s._ctl.seek = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; yt.seek(t); };
+    s._ctl.resume = () => {
+      if (endedByUs) return;
+      if (adPaused) { adPaused = false; yt.show(true); yt.play(); emit('ad', { active: true }); return; }
+      if (pendingSeek != null) { seekOnMove = pendingSeek; pendingSeek = null; }
+      yt.play();
+    };
+    s._ctl.seek = t => { if (paused && !endedByUs) { pendingSeek = t; return; } seekNow(t); };
+    s._ctl.position = () => seekOnMove ?? pendingSeek ?? yt.time();
     ytBusy = true;
     const host = yt;
     cleanup(() => {
-      stopping = true; clearInterval(poll); clearTimeout(needsTapT); clearT(); host.show(false); host.pause(); host.setHandler(null);
+      stopping = true; clearInterval(poll); clearTimeout(needsTapT); clearT(); host.show(false); host.release(); // stopVideo, and kill anything it starts after
+      host.shield(false);
+      if (ad) rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000);
+      ytAdHeld = false;
       ytBusy = false;
       if (wantedYtHost !== host.host) ensureYt(wantedYtHost); // a switch made during the video applies now
     });
@@ -669,6 +763,8 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     s._ctl.pause = () => audio.pause();
     s._ctl.resume = () => audio.play().catch(() => {});
     s._ctl.seek = t => { audio.currentTime = t; };
+    s._ctl.position = () => audio.currentTime || 0;
+    s._ctl.duration = () => (Number.isFinite(audio.duration) ? audio.duration : 0);
     cleanup(() => {
       for (const [k, f] of Object.entries(L)) audio.removeEventListener(k, f);
       document.removeEventListener('visibilitychange', onVis);
@@ -682,7 +778,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     mutedNow = !!on;
     if (video) video.muted = !!on;
     if (audio) audio.muted = !!on;
-    if (yt) (on ? yt.mute() : yt.unMute());
+    if (yt) (on || ytAdHeld ? yt.mute() : yt.unMute()); // an ad stays muted until the content plays
   }
 
   return {

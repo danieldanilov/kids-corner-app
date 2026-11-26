@@ -26,6 +26,9 @@ export function createAutoHide({ onChange = () => {}, onGuard = () => {}, timers
       if (!visible) { set(true); guard(); arm(); return 'revealed'; }
       arm(); return 'kept';
     },
+    // After a YouTube pause (a shield tap): the buttons ignore taps for 250 ms, so neither the same tap's click nor a
+    // second tap lands on play (QA bug 7, review B1).
+    guardTaps() { guard(); },
     // A touch on a control or the scrim: keep them up for another full delay.
     interact() { set(true); arm(); },
     // YouTube while it plays: nothing of ours over the iframe.

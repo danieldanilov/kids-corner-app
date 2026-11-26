@@ -4,7 +4,7 @@ import { normaliseTorrentioConfig } from './secrets.js';
 import { checkConnection } from './connection.js';
 import { setSecretList } from './main.js';
 import { CATEGORIES, titleClipId } from './data.js';
-import { todayKey } from './rules.js';
+import { todayKey, ytSigninStatus, YT_SIGNIN_PROOF } from './rules.js';
 import { ICONS } from './art.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -97,11 +97,22 @@ function readTestbedSettings() {
   });
 }
 
+// Google's sign-in for YouTube, returning to youtube.com (Google only returns to its own sites).
+const YT_SIGNIN = 'https://accounts.google.com/ServiceLogin?service=youtube&continue=' + encodeURIComponent('https://www.youtube.com/');
+const YT_STATUS = {
+  off: () => 'not in use: switch on "Use my YouTube sign-in" first.',
+  unknown: (y) => y.plays ? `not sure yet: no ads in ${y.plays} YouTube ${y.plays === 1 ? 'play' : 'plays'} so far; the app can tell after ${YT_SIGNIN_PROOF}.` : "unknown. The app can't see YouTube's sign-in; it can tell once a few videos have played with the switch on.",
+  likely: (y) => `probably yes: no ads in the last ${y.plays} YouTube ${y.plays === 1 ? 'play' : 'plays'} with your sign-in.`,
+  unlikely: (y) => `probably not: ${y.withAds} of the last ${y.plays} YouTube plays with your sign-in had ads.`,
+};
+
 export async function renderParent(view, app) {
   const s = app.settings;
   app.testbedSettings = !!(await readTestbedSettings());
   const secrets = await app.store.getSecrets();
   const plays = await app.store.allPlays();
+  const ytAttempt = await app.store.getKV('ytSignin');
+  const yt = ytSigninStatus({ plays, attempt: ytAttempt, signInOn: s.youtubeSignIn });
   const u = app.today();
   const today = plays.filter(p => p.date === todayKey());
   const hid = app.hidden();
@@ -135,6 +146,11 @@ export async function renderParent(view, app) {
       <div class="field"><span>Interface phrases</span>${seg('sounds.namesLang', s.sounds.namesLang, [['en-ru', 'English then Russian'], ['en', 'English'], ['ru', 'Russian']])}</div>
     </section>
 
+    <section><h2>Theme</h2>
+      <div class="field"><span>Colours</span>${seg('theme', s.theme || 'dark', [['dark', 'Dark'], ['light', 'Light']])}</div>
+      <p class="hint">Dark is the default, so the screen isn't bright in a dark room. Bedtime is dimmer and warmer still.</p>
+    </section>
+
     <section><h2>Bedtime</h2>
       <div class="field"><span>Bedtime now</span>${sw('bedtime.manual', s.bedtime.manual)}</div>
       ${s.bedtime.start || s.bedtime.end
@@ -147,6 +163,9 @@ export async function renderParent(view, app) {
 
     <section><h2>YouTube</h2>
       <div class="field"><span>Use my YouTube sign-in (Premium)</span>${sw('youtubeSignIn', s.youtubeSignIn)}</div>
+      <div class="field"><button class="btn" data-a="yt-signin-window">Sign in to YouTube here</button><button class="btn small" data-a="yt-signin">Or sign in in this window</button></div>
+      <p class="hint" data-yt-status="${yt.state}"><b>Signed in:</b> ${YT_STATUS[yt.state](yt)}${ytAttempt ? ` Last tried here: ${esc(new Date(ytAttempt.at).toLocaleString())} (${ytAttempt.method === 'window' ? 'new window' : 'same window'}).` : ''}</p>
+      <p class="hint"><b>Signing in here:</b> the YouTube sign-in opens over Kids Corner, so the app keeps its own sign-in, apart from Safari's. When you're signed in, tap <b>Done</b> at the top left to come back. If it opens full screen with no Done (the second button always does), come back this way: swipe up from the bottom edge and pause to open the app switcher, swipe Kids Corner up to close it, then open Kids Corner again from the Home Screen.</p>
       <p class="hint"><b>Why it's off:</b> off, YouTube plays from youtube-nocookie.com, which keeps YouTube from tracking what she watches. Switched on, it plays from youtube.com, which may use your Premium sign-in (no ads) but lets YouTube see her viewing on your account.</p>
       <p class="hint"><b>To try it:</b> 1. Switch it on here. 2. On the iPad, open Settings → Apps → Safari and turn off Prevent Cross-Site Tracking (on older iPadOS: Settings → Safari). 3. In Safari, go to youtube.com and sign in with the Premium account. Whether the Kids Corner icon uses Safari's sign-in is unchecked: the Home Screen app keeps its own storage, and there's no sign-in inside it yet, so if ads still show after this, it doesn't carry over.</p>
       <p class="hint"><b>To undo it:</b> switch it off here (the next video plays from youtube-nocookie.com again), and turn Prevent Cross-Site Tracking back on.</p>
@@ -264,6 +283,10 @@ export async function renderParent(view, app) {
     }
     const btn = e.target.closest('[data-a]');
     if (!btn) return;
+    // YouTube sign-in inside the installed app (testbed step 6j): the same window first, so the cookies land in the
+    // Home Screen app's own store; a new window must open inside her tap, before anything is awaited.
+    if (btn.dataset.a === 'yt-signin-window') { window.open(YT_SIGNIN, '_blank'); await app.store.setKV('ytSignin', { method: 'window', at: Date.now() }); return rerender(); }
+    if (btn.dataset.a === 'yt-signin') { await app.store.setKV('ytSignin', { method: 'same-window', at: Date.now() }); location.href = YT_SIGNIN; return; }
     const a = btn.dataset.a, id = btn.dataset.id;
     const meta = allTitles.find(t => t.id === id);
     switch (a) {

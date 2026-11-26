@@ -127,7 +127,7 @@ export function docsFromCatalogs(catalogs) {
     if (!m?.id || seen.has(m.id) || !m.name) continue;
     seen.add(m.id);
     // A song matches on its title and its artist (spec 4.10); the tile shows the title.
-    if (m.type === 'Music') docs.push({ id: m.id, kind: 'song', type: 'Music', name: [m.name, m.description].filter(Boolean).join(' · '), title: m.name, poster: m.poster });
+    if (m.type === 'Music' || m.type === 'Drawing' || m.type === 'Piano') docs.push({ id: m.id, kind: 'song', type: m.type, name: [m.name, m.description].filter(Boolean).join(' · '), title: m.name, poster: m.poster });
     else docs.push({ id: m.id, kind: 'title', type: m.type, name: m.name, poster: m.poster, posterShape: m.posterShape });
   }
   return docs;
@@ -171,6 +171,8 @@ export const SEARCH_GROUPS = [
   { type: 'movie', label: 'Movies', cat: 'movies' },
   { type: 'YouTube', label: 'YouTube', cat: 'youtube' },
   { type: 'Music', label: 'Music', cat: 'music' },
+  { type: 'Drawing', label: 'Drawing', cat: 'learn', icon: 'draw' },
+  { type: 'Piano', label: 'Piano', cat: 'learn', icon: 'piano' },
   { type: 'Audio', label: 'Stories', cat: 'stories' },
 ];
 export function groupResults(hits, { hidden, metaOf, perGroup = 30 }) {

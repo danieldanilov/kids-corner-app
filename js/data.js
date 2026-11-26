@@ -4,13 +4,11 @@ export const CINEMETA = 'https://v3-cinemeta.strem.io/';
 
 // The seven approved chips. Each row is one of the addon's own catalogs.
 // lang: the audio language a title in that row should play in.
-export const CATEGORIES = [
-  { id: 'shows', label: 'Shows', rows: [{ type: 'series', id: 'shows' }, { type: 'series', id: 'streaming' }] },
-  { id: 'movies', label: 'Movies', rows: [{ type: 'movie', id: 'movies' }, { type: 'movie', id: 'streaming' }] },
-  { id: 'bedtime', label: 'Bedtime', rows: [{ type: 'series', id: 'bedtime' }, { type: 'Audio', id: 'bedtime' }, { type: 'YouTube', id: 'bedtime' }] },
-  { id: 'youtube', label: 'YouTube', rows: [{ type: 'YouTube', id: 'shows' }, { type: 'YouTube', id: 'songs' }, { type: 'YouTube', id: 'learning' }, { type: 'YouTube', id: 'read-aloud' }, { type: 'YouTube', id: 'hebrew' }] },
-  // Music (spec 4.11): only Kids Corner's six music catalogs, in this order; each row's English name for its divider.
-  { id: 'music', label: 'Music', music: true, rows: [
+
+// Collections (spec 4.11, 4.12): Music and Learn's subjects, each fed only by its own Kids Corner catalogs, in this
+// order, each row's English name for its divider. Items are YouTube videos with ids <prefix><videoId>.
+export const COLLECTIONS = {
+  music: { type: 'Music', prefix: 'kc.music.', clip: 'music', cat: 'music', label: 'Music', route: '#/c/music', rows: [
     { type: 'Music', id: 'music.favourites', label: 'Favourites' },
     { type: 'Music', id: 'music.kpop-demon-hunters', label: 'KPop Demon Hunters' },
     { type: 'Music', id: 'music.disney', label: 'Disney' },
@@ -18,9 +16,47 @@ export const CATEGORIES = [
     { type: 'Music', id: 'music.russian', label: 'По-русски' },
     { type: 'Music', id: 'music.holidays', label: 'Christmas & New Year' },
   ] },
+  draw: { type: 'Drawing', prefix: 'kc.draw.', clip: 'drawing', cat: 'learn', label: 'Drawing', icon: 'draw', route: '#/c/learn/draw', rows: [
+    { type: 'Drawing', id: 'draw.first-shapes', label: 'First lines and shapes' },
+    { type: 'Drawing', id: 'draw.easy-animals', label: 'Easy animals' },
+    { type: 'Drawing', id: 'draw.things', label: 'Food, flowers and things that go' },
+    { type: 'Drawing', id: 'draw.letters', label: 'Draw with letters and numbers' },
+    { type: 'Drawing', id: 'draw.characters', label: 'Characters she knows' },
+    { type: 'Drawing', id: 'draw.holidays', label: 'Christmas and New Year' },
+    { type: 'Drawing', id: 'draw.ru-first', label: 'По-русски: first drawings' },
+    { type: 'Drawing', id: 'draw.ru-animals', label: 'По-русски: animals and cars' },
+  ] },
+  piano: { type: 'Piano', prefix: 'kc.piano.', clip: 'piano', cat: 'learn', label: 'Piano', icon: 'piano', route: '#/c/learn/piano', rows: [
+    { type: 'Piano', id: 'piano.first-steps', label: 'Meet the keyboard' },
+    { type: 'Piano', id: 'piano.sing-notes', label: 'Sing the notes' },
+    { type: 'Piano', id: 'piano.first-notes', label: 'First notes' },
+    { type: 'Piano', id: 'piano.high-low-loud-soft', label: 'High and low, loud and soft' },
+    { type: 'Piano', id: 'piano.rhythm', label: 'Rhythm and clapping' },
+    { type: 'Piano', id: 'piano.first-songs', label: 'First songs' },
+    { type: 'Piano', id: 'piano.ru-first-steps', label: 'In Russian: meet the music' },
+    { type: 'Piano', id: 'piano.ru-notes', label: 'In Russian: first notes' },
+    { type: 'Piano', id: 'piano.ru-rhythm', label: 'In Russian: rhythm' },
+    { type: 'Piano', id: 'piano.ru-first-songs', label: 'In Russian: first songs' },
+    { type: 'Piano', id: 'piano.ru-cartoons', label: 'Cartoons about music' },
+  ] },
+};
+// Learn's doors, in order: a new subject is one more entry here and in COLLECTIONS.
+export const SUBJECTS = ['draw', 'piano'];
+export const COLLECTION_TYPES = new Set(Object.values(COLLECTIONS).map(c => c.type));
+export const collectionOf = (id) => Object.keys(COLLECTIONS).find(k => String(id).startsWith(COLLECTIONS[k].prefix)) || null;
+export const isCollectionId = (id) => collectionOf(id) !== null;
+
+export const CATEGORIES = [
+  { id: 'shows', label: 'Shows', rows: [{ type: 'series', id: 'shows' }, { type: 'series', id: 'streaming' }] },
+  { id: 'movies', label: 'Movies', rows: [{ type: 'movie', id: 'movies' }, { type: 'movie', id: 'streaming' }] },
+  { id: 'bedtime', label: 'Bedtime', rows: [{ type: 'series', id: 'bedtime' }, { type: 'Audio', id: 'bedtime' }, { type: 'YouTube', id: 'bedtime' }] },
+  { id: 'youtube', label: 'YouTube', rows: [{ type: 'YouTube', id: 'shows' }, { type: 'YouTube', id: 'songs' }, { type: 'YouTube', id: 'learning' }, { type: 'YouTube', id: 'read-aloud' }, { type: 'YouTube', id: 'hebrew' }] },
+  { id: 'music', label: 'Music', music: true, rows: COLLECTIONS.music.rows },
   { id: 'stories', label: 'Stories', rows: [{ type: 'Audio', id: 'stories' }, { type: 'movie', id: 'stories' }] },
   { id: 'russian', label: 'По-русски', lang: 'ru', rows: [{ type: 'series', id: 'ru-series' }, { type: 'movie', id: 'ru-movies' }, { type: 'YouTube', id: 'russian' }] },
   { id: 'british', label: 'British', rows: [{ type: 'series', id: 'british' }, { type: 'movie', id: 'british' }] },
+  // Learn (spec 4.12): the ninth chip, doors to its subjects; their catalogs load with the rest.
+  { id: 'learn', label: 'Learn', learn: true, rows: SUBJECTS.flatMap(k => COLLECTIONS[k].rows) },
 ];
 
 // Bedtime home rows (spec 8.1), always in this order.
@@ -78,36 +114,38 @@ export async function defaultFetchJson(url, { timeoutMs = 12000, cache } = {}) {
 
 export const rowKey = (r) => `${r.type}/${r.id}`;
 
-// The Music page (spec 4.11): the music catalogs' rows in order, each song once (the first row it appears in),
-// hidden or failed songs left out, empty rows dropped. `videos` is the page order, which next and the pause tiles
-// follow. A song's YouTube id is the end of its id (kc.music.<videoId>).
-export const MUSIC_PREFIX = 'kc.music.';
-export function musicData(catalogs, { hidden = new Set() } = {}) {
-  const cat = CATEGORIES.find(c => c.id === 'music');
+// A collection's page (Music 4.11, a Learn subject 4.12): its catalogs' rows in order, each item once (the first
+// row it appears in), hidden or failed items left out, empty rows dropped. `videos` is the page order, which next
+// and the pause tiles follow. An item's YouTube id is the end of its id (<prefix><videoId>).
+export function collectionData(key, catalogs, { hidden = new Set() } = {}) {
+  const col = COLLECTIONS[key];
   const seen = new Set(), rows = [];
-  for (const r of cat.rows) {
+  for (const r of col.rows) {
     const songs = [];
     for (const m of catalogs[rowKey(r)] || []) {
-      if (!m?.id?.startsWith(MUSIC_PREFIX) || seen.has(m.id) || hidden.has(m.id)) continue;
+      if (!m?.id?.startsWith(col.prefix) || seen.has(m.id) || hidden.has(m.id)) continue;
       seen.add(m.id);
-      songs.push({ id: m.id, title: m.name || '', artist: m.description || '', thumbnail: m.poster || '', ytId: m.id.slice(MUSIC_PREFIX.length) });
+      songs.push({ id: m.id, title: m.name || '', artist: m.description || '', thumbnail: m.poster || '', ytId: m.id.slice(col.prefix.length) });
     }
     if (songs.length) rows.push({ key: rowKey(r), label: r.label, songs });
   }
   const videos = rows.flatMap(r => r.songs);
-  return { title: { id: 'music', type: 'Music', name: 'Music', poster: videos[0]?.thumbnail || '' }, videos, rows };
+  return { title: { id: key, type: col.type, name: col.label, poster: videos[0]?.thumbnail || '' }, videos, rows };
 }
+export const MUSIC_PREFIX = COLLECTIONS.music.prefix;
+export const musicData = (catalogs, opts) => collectionData('music', catalogs, opts);
 
 // A song's still (review S3): YouTube's 1280x720 hq720 first, since tiles are 416x234 CSS px (832x468 on her iPad);
 // the catalog's 320x180 mqdefault when hq720 is missing.
 export const songThumb = (ytId) => ({ hi: `https://i.ytimg.com/vi/${ytId}/hq720.jpg`, lo: `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg` });
 
-// The spoken-title clip for a title or a song (spec 2.6): songs are title/music.<videoId>.
-export const titleClipId = (id) => (String(id).startsWith(MUSIC_PREFIX) ? 'music.' + String(id).slice(MUSIC_PREFIX.length) : id);
+// The spoken-title clip for a title or a collection item (spec 2.6): title/music.<videoId>, title/drawing.<videoId>,
+// title/piano.<videoId>.
+export const titleClipId = (id) => { const k = collectionOf(id); return k ? COLLECTIONS[k].clip + '.' + String(id).slice(COLLECTIONS[k].prefix.length) : id; };
 
 // Every title in catalog order, for the New row: songs are not titles and never count as new.
 export function titleOrder(catalogs) {
-  return [...new Set(ALL_ROWS.filter(r => r.type !== 'Music').flatMap(r => (catalogs[rowKey(r)] || []).map(m => m.id)))];
+  return [...new Set(ALL_ROWS.filter(r => !COLLECTION_TYPES.has(r.type)).flatMap(r => (catalogs[rowKey(r)] || []).map(m => m.id)).filter(id => !isCollectionId(id)))];
 }
 
 // Rows for a category: hidden and failed titles out, a title only once per category, empty rows dropped.
@@ -170,7 +208,7 @@ export function parseYear(y) {
 }
 
 export function kindOf(type) {
-  if (type === 'YouTube' || type === 'Music') return 'youtube';   // songs play in the YouTube player
+  if (type === 'YouTube' || COLLECTION_TYPES.has(type)) return 'youtube';   // songs and lessons play in the YouTube player
   if (type === 'Audio') return 'audio';
   return 'torbox';
 }

@@ -205,7 +205,7 @@ export function createPlayUI(app) {
     // again and keep the screen. Nothing moves on by itself (spec 4.6, 4.9).
     on('resumed', () => {
       clearTimeout(my.stallTimer); layer.classList.remove('stalled');
-      if (my.paused) { my.session.pause(); return; }
+      if (my.paused) { my.session.pause(); layer.classList.remove('yt-ad'); onPaused(my, {}); return; }   // the full pause screen
       layer.classList.remove('needs-tap'); playingNow(my);
     });
     on('ended', (d) => onEnded(my, d));   // also YouTube failing in the last 15 s ({nearEnd:true}): watched, never the sleeping card (QA #19)
@@ -218,8 +218,13 @@ export function createPlayUI(app) {
     // An ad (4.8): YouTube's own screen with only our back arrow, muted by the player; when it ends, the content
     // plays with its sound back and nothing of ours over it.
     on('ad', (d) => {
-      if (d.active) { showYouTubeOwn(my); layer.classList.add('yt-ad'); }
-      else layer.classList.remove('yt-ad');   // YouTube's own screen stays until the content plays ('ready' or 'resumed', QA #15)
+      // An ad that starts while she's paused, which she didn't start (her play clears my.paused first): the player's
+      // retry reloaded and its pre-roll began by itself (QA #24). Hold it paused and keep our pause screen; the ad
+      // waits hidden until her play.
+      if (d.active && my.paused) { my.session.pause(); onPaused(my, { ad: true }); return; }
+      if (d.active) { showYouTubeOwn(my); layer.classList.add('yt-ad'); return; }
+      layer.classList.remove('yt-ad');   // YouTube's own screen stays until the content plays ('ready' or 'resumed', QA #15)
+      if (my.paused) onPaused(my, {});   // an ad that ran out under our pause screen: the full screen again
     });
     on('failed-all', (d) => fail(d.reasons || [], my, d));
     on('report', (d) => { if (d.playId && !my.playerPlayId) { my.playerPlayId = d.playId; } const { playId, ...rest } = d; logPlay({ ...rest, playerPlayId: playId }, my); });
@@ -305,7 +310,7 @@ export function createPlayUI(app) {
     // Paused in an ad (leaving the app, QA bug 3): YouTube's own screen gives way to our pause screen with play; on
     // play the player carries the ad on and sends 'ad' again, which brings its screen back.
     const inAd = c.item.kind === 'youtube' && (d.ad || c.session?.inAd || layer.classList.contains('yt-ad'));
-    if (inAd) layer.classList.remove('needs-tap', 'yt-ad');
+    layer.classList.remove('needs-tap', 'yt-ad');   // whatever an ad left behind, the pause screen is drawn whole (QA #24)
     layer.classList.toggle('ad-paused', !!inAd);   // QA #14: no ±15 or position bar while an ad waits
     if (c.item.kind === 'youtube' && !c.paused) autoHide.guardTaps();
     c.paused = true;

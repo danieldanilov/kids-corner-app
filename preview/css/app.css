@@ -288,7 +288,7 @@ svg { display: block; }
 /* Position bar (4.6): 480 x 12, its top 120 px below the centre, time under it; paused only, never tappable. */
 .pos-bar { display: none; position: absolute; left: calc(50% - 240px); top: calc(50% + 120px); width: 480px; pointer-events: none; }
 #player.paused .pos-bar:not(.nodur) { display: block; }
-#player.ad-paused .rail-btn[data-r="back15"], #player.ad-paused .rail-btn[data-r="fwd15"], #player.ad-paused .skip-pop, #player.ad-paused .pos-bar { display: none; }   /* QA #14 */
+#player.ad-paused .rail-btn[data-r="back15"], #player.ad-paused .rail-btn[data-r="fwd15"], #player.ad-paused .skip-pop, #player.paused.ad-paused .pos-bar:not(.nodur) { display: none; }   /* QA #14 (the bar's rule outranks the plain .paused one) */
 .pos-bar .trk { height: 12px; border-radius: 6px; background: rgba(255, 255, 255, .3); overflow: hidden; }
 .pos-bar .fil { height: 100%; width: 0; background: #fff; border-radius: 6px; transition: width .3s ease-out; }
 [data-motion="reduced"] .pos-bar .fil { transition: none; }

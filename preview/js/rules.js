@@ -10,6 +10,10 @@ export function isFinished(p) {
 }
 
 // One entry per title: the latest record decides. Unfinished and really started only. Newest first.
+// Songs and lessons (Music, Learn): the same rules everywhere. Kept here as plain values so rules.js needs no data import.
+export const COLLECTION_TYPE_NAMES = ['Music', 'Drawing', 'Piano'];
+export const isCollectionItem = (id) => /^kc\.(music|draw|piano)\./.test(String(id));
+
 export function keepWatching(progress, { hidden = new Set(), max = KEEP_MAX } = {}) {
   const latest = new Map();
   for (const p of progress) {
@@ -17,7 +21,7 @@ export function keepWatching(progress, { hidden = new Set(), max = KEEP_MAX } = 
     if (!cur || p.updatedAt > cur.updatedAt) latest.set(p.titleId, p);
   }
   return [...latest.values()]
-    .filter(p => p.titleType !== 'Music' && !hidden.has(p.titleId) && !isFinished(p) && p.position >= MIN_START_S)   // songs are replayed whole
+    .filter(p => !COLLECTION_TYPE_NAMES.includes(p.titleType) && !hidden.has(p.titleId) && !isFinished(p) && p.position >= MIN_START_S)   // songs and lessons are replayed whole
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, max);
 }
@@ -25,7 +29,7 @@ export function keepWatching(progress, { hidden = new Set(), max = KEEP_MAX } = 
 // Pinned by a parent first (in pin order), then her hearts in the order she added them.
 export function myShows(favs, pinned = [], hidden = new Set()) {
   const out = [];
-  const song = (id) => String(id).startsWith('kc.music.');   // songs never sit in My shows (they live on the Music page)
+  const song = isCollectionItem;   // songs and lessons never sit in My shows (they live on their own pages)
   hidden = new Set([...hidden, ...pinned.filter(song), ...favs.map(f => f.id).filter(song)]);
   for (const id of pinned) if (!hidden.has(id) && !out.includes(id)) out.push(id);
   for (const f of [...favs].sort((a, b) => a.addedAt - b.addedAt)) if (!hidden.has(f.id) && !out.includes(f.id)) out.push(f.id);
@@ -161,9 +165,8 @@ export const youtubeHostFor = (settings) => (settings && settings.youtubeSignIn 
 export const STARTER_COUNT = 8;
 export function starterShows(showsRow, { favs = [], pinned = [], hidden = new Set() } = {}) {
   // Only real shows' hearts and pins replace the starter set: a leftover song or lesson never empties My shows.
-  const item = (id) => /^kc\.(music|draw|piano)\./.test(String(id));
-  if (favs.some(f => !item(f.id)) || pinned.some(id => !item(id))) return [];
-  return (showsRow || []).filter(t => t?.id && !hidden.has(t.id) && !String(t.id).startsWith('kc.music.')).slice(0, STARTER_COUNT);   // never a song
+  if (favs.some(f => !isCollectionItem(f.id)) || pinned.some(id => !isCollectionItem(id))) return [];
+  return (showsRow || []).filter(t => t?.id && !hidden.has(t.id) && !isCollectionItem(t.id)).slice(0, STARTER_COUNT);   // never a song or lesson
 }
 
 // New titles: the first run records every catalog title as the baseline (0); a title first seen later keeps

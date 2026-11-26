@@ -1,7 +1,7 @@
 // Her screens: home, category, show/movie/channel pages, rest, good night, the how-many picker (spec 4, 8).
-import { CATEGORIES, BEDTIME_ROWS, kindOf, musicData, songThumb, MUSIC_PREFIX } from './data.js';
+import { CATEGORIES, BEDTIME_ROWS, kindOf, collectionData, collectionOf, isCollectionId, songThumb, COLLECTIONS, SUBJECTS } from './data.js';
 import { keepWatching, myShows, isFinished, showsAllowed, starterShows, newTitles } from './rules.js';
-import { pom, CHIP_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
+import { pom, CHIP_ART, SUBJECT_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
 import { groupResults } from './search.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -57,7 +57,7 @@ export async function renderHome(view, app, { announceBedtime = false } = {}) {
     const starter = starterShows(app.catalogs['series/shows'], { favs: app.favs, pinned: app.settings.pinned, hidden });
     const mine = (own.length ? own : starter).map(t => ({ t }));
     const keep = keepWatching([...app.progress.values()], { hidden }).map(p => ({ t: { id: p.titleId, type: p.titleType, name: p.titleName, poster: p.poster, posterShape: p.posterShape }, p }));
-    const picked = app.settings.newRow.filter(t => !hidden.has(t.id) && !String(t.id).startsWith(MUSIC_PREFIX));   // songs never sit in New
+    const picked = app.settings.newRow.filter(t => !hidden.has(t.id) && !isCollectionId(t.id));   // songs and lessons never sit in New
     const arrived = newTitles(app.catalogOrder || [], app.seen, Date.now()).filter(id => !hidden.has(id) && !picked.some(p => p.id === id)).map(id => findMeta(app, id)).filter(Boolean);
     const fresh = [...picked, ...arrived].map(t => ({ t }));
     rows = [{ key: 'myshows', sign: 'row.myshows', items: mine, ghost: true }, { key: 'keep', sign: 'row.keep', items: keep, keep: true }, { key: 'new', sign: 'row.new', items: fresh }];
@@ -159,6 +159,14 @@ export function renderSearch(view, app, { focus = false } = {}) {
   if (focus) input.focus();
 }
 
+// A song or lesson in search (4.10): a poster-shaped tile, the 16:9 still on top, the collection's colour and
+// picture below, the title under it.
+function songTile(hit) {
+  const col = COLLECTIONS[collectionOf(hit.id)] || COLLECTIONS.music;
+  const art = col.icon ? SUBJECT_ART[col.icon] : CHIP_ART[col.cat];
+  return `<div class="sitem"><button class="poster songin tapable" data-cat="${col.cat}" data-act="song" data-vid="${esc(hit.id)}" aria-label="${esc(hit.title)}"><span class="sart"><span class="fallback">${art}</span>${hit.poster ? `<img src="${esc(hit.poster)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}</span><span class="sqfoot">${art}</span></button><span class="epname">${esc(hit.title)}</span></div>`;
+}
+
 // Re-run the query in place (after a keystroke, or when more of the index arrives); keeps the scroll on a refresh.
 export function runSearch(view, app, { refresh = false } = {}) {
   const input = view.querySelector('#sq'), res = view.querySelector('#sres');
@@ -170,9 +178,9 @@ export function runSearch(view, app, { refresh = false } = {}) {
   const metas = new Map();
   for (const list of Object.values(app.catalogs)) for (const m of list || []) if (m?.id && !metas.has(m.id)) metas.set(m.id, m);
   const groups = groupResults(app.search(q, { limit: Infinity, why: refresh ? 'refresh' : 'typed' }), { hidden: app.hidden(), metaOf: (id) => metas.get(id) || null });
-  const html = groups.map(g => `<div class="sgroup" data-type="${g.type}"><h3><span class="art">${CHIP_ART[g.cat]}</span>${g.label}</h3><div class="sgrid">${
+  const html = groups.map(g => `<div class="sgroup" data-type="${g.type}"><h3><span class="art">${g.icon ? SUBJECT_ART[g.icon] : CHIP_ART[g.cat]}</span>${g.label}</h3><div class="sgrid">${
     g.items.map(({ hit, meta }) => hit.kind === 'song'
-      ? `<div class="sitem"><button class="poster songin tapable" data-cat="music" data-act="song" data-vid="${esc(hit.id)}" aria-label="${esc(hit.title)}"><span class="sart"><span class="fallback">${CHIP_ART.music}</span>${hit.poster ? `<img src="${esc(hit.poster)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}</span><span class="sqfoot">${CHIP_ART.music}</span></button><span class="epname">${esc(hit.title)}</span></div>`
+      ? songTile(hit)
       : hit.kind === 'title'
       ? `<div class="sitem">${posterHtml(meta, app, { squareIn: true, data: `data-act="title" data-type="${esc(meta.type)}" data-id="${esc(meta.id)}"` })}</div>`
       : `<div class="sitem">${posterHtml(meta, app, { squareIn: true, data: `data-act="ep" data-type="${esc(meta.type)}" data-id="${esc(meta.id)}" data-vid="${esc(hit.id)}"` }).replace(`aria-label="${esc(meta.name)}"`, `aria-label="${esc(meta.name + ': ' + hit.name)}"`)}<span class="epname">${esc(hit.name)}</span></div>`).join('')
@@ -188,10 +196,11 @@ export function runSearch(view, app, { refresh = false } = {}) {
 }
 
 // ---------- category ----------
-export async function renderCategory(view, app, catId) {
+export async function renderCategory(view, app, catId, sub) {
   const cat = catById(catId);
   if (!cat) return app.go('#/');
-  if (cat.music) return renderMusic(view, app, cat);
+  if (cat.music) return renderCollection(view, app, 'music', cat);
+  if (cat.learn) return sub && SUBJECTS.includes(sub) ? renderCollection(view, app, sub, cat) : renderLearn(view, app, cat);
   const { buildRows } = await import('./data.js');
   const rows = buildRows(cat, app.catalogs, { hidden: app.hidden().titles });
   // Each type group (and the Hebrew channels) starts on a fresh column, so shapes never mix in a column.
@@ -228,27 +237,35 @@ const songImg = (v) => {
   const t = songThumb(v.ytId);
   return `<img src="${esc(t.hi)}" data-lo="${esc(t.lo)}" alt="" loading="lazy" decoding="async" onload="if(this.naturalWidth<=120&&this.dataset.lo){this.src=this.dataset.lo;this.dataset.lo=''}" onerror="if(this.dataset.lo){this.src=this.dataset.lo;this.dataset.lo=''}else this.remove()">`;
 };
-// One sideways shelf: each row starts on a fresh column with a 120 px divider (a note and the row's name, for the
-// grown-up), then its songs as landscape thumbnails at the episode-tile size; Pom on the cushion at the end. A tap
-// plays the song in the YouTube player. After a song ends, it's checked and carries a big "again".
-function renderMusic(view, app, cat) {
+// One sideways shelf (Music 4.11, a Learn subject 4.12): each row starts on a fresh column with a 120 px divider
+// (the collection's picture and the row's name, for the grown-up), then its videos as landscape thumbnails at the
+// episode-tile size; Pom on the cushion at the end. A tap plays the video in the YouTube player. After one ends,
+// it's checked and carries a big "again".
+function renderCollection(view, app, key, cat) {
+  const col = COLLECTIONS[key];
+  const art = col.icon ? SUBJECT_ART[col.icon] : CHIP_ART[col.cat];
   const hid = app.hidden();
-  const data = musicData(app.catalogs, { hidden: new Set([...hid.titles, ...hid.videos]) });
+  const data = collectionData(key, app.catalogs, { hidden: new Set([...hid.titles, ...hid.videos]) });
   const ended = app.justEnded;
   app.justEnded = null;
-  const songs = data.rows.map(r => `<div class="mdiv" aria-hidden="true">${CHIP_ART.music}<span>${esc(r.label)}</span></div>` + r.songs.map(v => {
+  const songs = data.rows.map(r => `<div class="mdiv" aria-hidden="true">${art}<span>${esc(r.label)}</span></div>` + r.songs.map(v => {
     const p = app.progress.get(v.id);
     const done = p && isFinished(p);
     const isEnded = ended === v.id;
-    return `<button class="ep song tapable ${isEnded ? 'just-ended' : ''}" data-act="song" data-vid="${esc(v.id)}" data-cat="music" aria-label="${esc(v.title)}">
-      <span class="fallback">${CHIP_ART.music}</span>${songImg(v)}
-      ${done ? `<span class="ep-check">${ICONS.check}</span>` : ''}${isEnded ? `<span class="again-btn" data-cat="music">${ICONS.again}</span>` : ''}</button>`;
+    return `<button class="ep song tapable ${isEnded ? 'just-ended' : ''}" data-act="song" data-vid="${esc(v.id)}" data-cat="${col.cat}" aria-label="${esc(v.title)}">
+      <span class="fallback">${art}</span>${songImg(v)}
+      ${done ? `<span class="ep-check">${ICONS.check}</span>` : ''}${isEnded ? `<span class="again-btn" data-cat="${col.cat}">${ICONS.again}</span>` : ''}</button>`;
   }).join('')).join('');
-  view.className = 'screen category music';
+  // A subject page shows the lit Learn chip with the subject's picture, and the subject's name.
+  const chip = col.icon
+    ? `<button class="chip tapable lit" data-cat="learn" data-act="cat" data-id="learn" aria-label="${esc(col.label)}"><span class="art">${art}</span><span class="word">Learn</span></button>`
+    : chipHtml(cat, app, true);
+  view.className = `screen category collection ${key}`;
+  view.dataset.collection = key;
   view.innerHTML = `
-    <header class="page-top">${homeBtn()}${chipHtml(cat, app, true)}<h1 class="page-name">${esc(cat.label)}</h1>
+    <header class="page-top">${homeBtn()}${chip}<h1 class="page-name">${esc(col.label)}</h1>
       <div class="pager">${pagerHtml()}</div></header>
-    <div class="shelf music-shelf" data-cat="music">
+    <div class="shelf music-shelf" data-cat="${col.cat}">
       ${songs}
       <div class="shelf-end pom-pokeable" aria-hidden="true">${pom('day')}${CUSHION}</div>
     </div>`;
@@ -259,8 +276,26 @@ function renderMusic(view, app, cat) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     if (b.dataset.act === 'home') { app.effect('button'); app.go('#/'); }
-    else if (b.dataset.act === 'cat') { app.effect('chip'); app.speak('cat.music'); }
+    else if (b.dataset.act === 'cat') { app.effect('chip'); app.speak(col.icon ? 'learn.' + key : 'cat.' + col.cat); }
     else if (b.dataset.act === 'song') { app.effect('poster'); app.playui.playSong(b.dataset.vid, b); }
+  };
+}
+
+// ---------- Learn page (spec 4.12) ----------
+// One big door per subject, centred between the header and the bottom strip; nothing to page.
+function renderLearn(view, app, cat) {
+  view.className = 'screen category learn';
+  delete view.dataset.collection;
+  view.innerHTML = `
+    <header class="page-top">${homeBtn()}${chipHtml(cat, app, true)}<h1 class="page-name">${esc(cat.label)}</h1></header>
+    <div class="doors" data-cat="learn">${SUBJECTS.map(k => `<button class="door tapable" data-act="door" data-k="${k}" aria-label="${esc(COLLECTIONS[k].label)}">
+      <span class="art">${SUBJECT_ART[COLLECTIONS[k].icon]}</span><span class="dname">${esc(COLLECTIONS[k].label)}</span></button>`).join('')}</div>`;
+  view.onclick = (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'home') { app.effect('button'); app.go('#/'); }
+    else if (b.dataset.act === 'cat') { app.effect('chip'); app.speak('cat.learn'); }
+    else if (b.dataset.act === 'door') { app.effect('chip'); app.speak('learn.' + b.dataset.k); app.go(COLLECTIONS[b.dataset.k].route); }
   };
 }
 
@@ -279,11 +314,11 @@ function wireShelf(view, app) {
     const atStart = shelf.scrollLeft <= 2, atEnd = pastRight().length === 0;
     prev.classList.toggle('inert', atStart); next.classList.toggle('inert', atEnd);
     prev.disabled = atStart; next.disabled = atEnd;
-    // A poster cut by the shelf edge is a sliver: dimmed and not tappable until paged into view.
     // The visible page is the shelf minus its side gutters, so a poster peeking into a gutter counts as cut.
     const sr = shelf.getBoundingClientRect(), padR = parseFloat(getComputedStyle(shelf).paddingRight) || 0;
     const lo = sr.left + pad - 1, hi = Math.min(sr.right, innerWidth) - padR + 1;
-    for (const t of tiles()) { const r = t.getBoundingClientRect(); t.classList.toggle('partial', r.left < lo || r.right > hi); }
+    // Spec 4.2 v7: a tile with less than 120 px showing at either edge takes no taps until it scrolls into view.
+    for (const t of tiles()) { const r = t.getBoundingClientRect(); const shown = Math.min(r.right, hi) - Math.max(r.left, lo); t.classList.toggle('partial', shown < 120 && (r.left < lo || r.right > hi)); }
   };
   shelf.addEventListener('scroll', () => { cancelAnimationFrame(shelf._u); shelf._u = requestAnimationFrame(update); }, { passive: true });
   // Page by whole columns: next starts at the first column cut by the right edge; back ends where this page began.

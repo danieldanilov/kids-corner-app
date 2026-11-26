@@ -1,6 +1,6 @@
 // The player flow (spec 4.5-4.7, 5, 7): loading moment with the category toy, the rail, pause screen,
 // stall state, goodbye card, sleeping card, limits at episode ends, progress, watch time and the play log.
-import { playItemFor, kindOf, musicData, titleClipId } from './data.js';
+import { playItemFor, kindOf, collectionData, collectionOf, titleClipId, COLLECTIONS, COLLECTION_TYPES } from './data.js';
 import { failureCounts, youtubeHostFor, isSetupReason, isFinished, canStart, isLastOne, addWatchTime, recordEpisodeEnd, onEpisodeEnd, onPlaybackTick, recordFailure, todayKey } from './rules.js';
 import { sanitizeReport, secretValues } from './secrets.js';
 import { mountToy, toyFor } from './toys.js';
@@ -9,7 +9,9 @@ import { createAutoHide } from './controls.js';
 
 const $ = (s) => document.querySelector(s);
 // The spoken title for what's playing: a song's own title (title.music.<videoId>), otherwise the show's.
-const titleClip = (c) => 'title.' + titleClipId(c.data.title.type === 'Music' ? c.item.videoId : c.data.title.id);
+// Songs and lessons (Music, Learn's subjects) follow the same rules: start at 0, no halfway spot, no show count.
+const isColl = (c) => COLLECTION_TYPES.has(c.data?.title?.type ?? c.title?.type);
+const titleClip = (c) => 'title.' + titleClipId(isColl(c) ? c.item.videoId : c.data.title.id);
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 const SAVE_EVERY_MS = 5000;
 const SETUP = new Set(['not-configured', 'unauthorized', 'misconfigured', 'forbidden', 'no-player', 'app_token']);
@@ -56,7 +58,7 @@ export function createPlayUI(app) {
       const m = /\/vi\/([^/]+)\//.exec(v.thumbnail || '');
       stream = m ? { ytId: m[1] } : app.streamReady.get(`${t.type}/${v.id}`) || null;
     } else if (t.type === 'Audio') stream = app.streamReady.get(`${t.type}/${v.id}`) || null;
-    else if (t.type === 'Music') stream = { ytId: v.ytId };   // kc.music.<videoId>: the id is the YouTube id
+    else if (COLLECTION_TYPES.has(t.type)) stream = { ytId: v.ytId };   // <prefix><videoId>: the id is the YouTube id
     return playItemFor(t, v, { lang: app.langOf(t.id), stream });
   }
 
@@ -92,7 +94,7 @@ export function createPlayUI(app) {
 
   async function saveProgress(final = false) {
     if (!ctx || !ctx.duration) return;
-    if (ctx.data.title.type === 'Music' && !final) return;   // a song keeps no halfway spot; only its end (the check mark)
+    if (isColl(ctx) && !final) return;   // a song or lesson keeps no halfway spot; only its end (the check mark)
     const { item, data } = ctx;
     const rec = {
       key: item.videoId, titleId: data.title.id, titleType: data.title.type, titleName: data.title.name,
@@ -141,7 +143,7 @@ export function createPlayUI(app) {
   }
 
   function teardown() {
-    layer.classList.remove('needs-tap', 'yt-ad', 'controls-hidden', 'paused', 'stalled', 'tap-guard');
+    layer.classList.remove('needs-tap', 'yt-ad', 'ad-paused', 'controls-hidden', 'paused', 'stalled', 'tap-guard');
     autoHide.setPlaying(false);
     document.getElementById('kc-yt').style.visibility = '';
     if (!ctx) return;
@@ -165,9 +167,9 @@ export function createPlayUI(app) {
     }
     teardown();
     const prev = app.progress.get(item.videoId);
-    const song = data.title.type === 'Music';
+    const song = isColl({ data });
     const startAt = !song && prev && !isFinished(prev) ? Math.max(0, prev.position - 2) : 0;   // songs always start from the beginning
-    const cat = data.title.type === 'Music' ? 'music' : app.catOf(data.title.id) || (data.title.type === 'YouTube' ? 'youtube' : data.title.type === 'Audio' ? 'stories' : 'shows');
+    const cat = isColl({ data }) ? COLLECTIONS[data.title.id].cat : app.catOf(data.title.id) || (data.title.type === 'YouTube' ? 'youtube' : data.title.type === 'Audio' ? 'stories' : 'shows');
     const returnTo = ctx?.returnTo || (location.hash || '#/');
     ctx = { data, videos, index, item, cat, fromKeep, returnTo, playId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, startedAt: Date.now(),
       position: startAt, duration: 0, paused: false, ready: false, lastTick: 0, lastPos: startAt, lastSave: 0, watched: 0 };
@@ -198,7 +200,7 @@ export function createPlayUI(app) {
     on('paused', (d) => { autoHide.setPlaying(false); onPaused(my, d); });
     // Stalled more than 1 s (4.7): the controls show and stay, Pom breathes small bottom-right. YouTube buffers inside its own player.
     on('stalled', () => { if (my.item.kind === 'youtube') return; clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => { if (ctx === my) { layer.classList.add('stalled'); autoHide.setPlaying(false); } }, 1000); });
-    on('resumed', () => { clearTimeout(my.stallTimer); layer.classList.remove('stalled'); if (my.paused) { my.paused = false; endPause(); setRail(); } playingNow(my); });
+    on('resumed', () => { clearTimeout(my.stallTimer); layer.classList.remove('stalled', 'needs-tap'); if (my.paused) { my.paused = false; endPause(); setRail(); } playingNow(my); });
     on('ended', () => onEnded(my));
     on('needs-tap', () => showYouTubeOwn(my));
     // A tap on the playing YouTube video lands on the clear layer: pause through the session, as a touch on TorBox
@@ -208,7 +210,7 @@ export function createPlayUI(app) {
     // plays with its sound back and nothing of ours over it.
     on('ad', (d) => {
       if (d.active) { showYouTubeOwn(my); layer.classList.add('yt-ad'); }
-      else { layer.classList.remove('yt-ad', 'needs-tap'); if (my.ready && !my.paused) playingNow(my); }
+      else layer.classList.remove('yt-ad');   // YouTube's own screen stays until the content plays ('ready' or 'resumed', QA #15)
     });
     on('failed-all', (d) => fail(d.reasons || [], my, d));
     on('report', (d) => { if (d.playId && !my.playerPlayId) { my.playerPlayId = d.playId; } const { playId, ...rest } = d; logPlay({ ...rest, playerPlayId: playId }, my); });
@@ -293,7 +295,9 @@ export function createPlayUI(app) {
   function onPaused(c, d = {}) {
     // Paused in an ad (leaving the app, QA bug 3): YouTube's own screen gives way to our pause screen with play; on
     // play the player carries the ad on and sends 'ad' again, which brings its screen back.
-    if (c.item.kind === 'youtube' && (d.ad || c.session?.inAd || layer.classList.contains('yt-ad'))) layer.classList.remove('needs-tap', 'yt-ad');
+    const inAd = c.item.kind === 'youtube' && (d.ad || c.session?.inAd || layer.classList.contains('yt-ad'));
+    if (inAd) layer.classList.remove('needs-tap', 'yt-ad');
+    layer.classList.toggle('ad-paused', !!inAd);   // QA #14: no ±15 or position bar while an ad waits
     if (c.item.kind === 'youtube' && !c.paused) autoHide.guardTaps();
     c.paused = true;
     autoHide.setPlaying(false);   // paused (4.6): the controls show and stay
@@ -314,7 +318,7 @@ export function createPlayUI(app) {
   }
 
   function endPause() {
-    layer.classList.remove('paused');
+    layer.classList.remove('paused', 'ad-paused');
     rail.querySelector('.pause-tiles').innerHTML = '';
     pauseEl.classList.remove('open'); pauseEl.innerHTML = '';
     document.getElementById('kc-yt').style.visibility = '';
@@ -336,7 +340,7 @@ export function createPlayUI(app) {
     const r = b.dataset.r;
     if (r === 'back') { app.effect('button'); leave('back'); }
     else if (r === 'toggle') { app.effect('button'); ctx.paused ? doResume() : doPause(); }
-    else if (r === 'back15' || r === 'fwd15') {
+    else if ((r === 'back15' || r === 'fwd15') && !layer.classList.contains('ad-paused')) {
       app.effect('tick');
       // From the real position at the tap (QA bug 10): the player's seekBy reads its own clock (or the held target).
       const d = r === 'fwd15' ? 15 : -15;
@@ -369,7 +373,7 @@ export function createPlayUI(app) {
   async function onEnded(c) {
     c.position = c.duration || c.position;
     await saveProgress(true);
-    if (c.data.title.type !== 'Music') app.usage = recordEpisodeEnd(app.today());   // songs never count toward a show limit
+    if (!isColl(c)) app.usage = recordEpisodeEnd(app.today());   // songs and lessons never count toward a show limit
     const oneStory = app.bedtime && app.settings.bedtime.oneStory;
     if (oneStory) app.usage = { ...app.usage, goodnight: true };
     await app.saveUsage();
@@ -389,7 +393,7 @@ export function createPlayUI(app) {
       overlay.classList.remove('open'); overlay.innerHTML = '';
       app.justEnded = action === 'goodbye' && !oneStory ? c.item.videoId : null;
       if (action === 'rest' || oneStory) { app.go('#/'); app.render(); }
-      else if (c.data.title.type === 'Music') app.go('#/c/music');      // the Music page, that song checked with "again"
+      else if (isColl(c)) app.go(COLLECTIONS[c.data.title.id].route);      // its own page, that video checked with "again"
       else app.go(`#/t/${c.data.title.type}/${c.data.title.id}`);
     };
     overlay.querySelector('.card-back').onclick = () => { app.effect('button'); app.sound.stopVoice(); finish(); };
@@ -406,7 +410,7 @@ export function createPlayUI(app) {
     if (setup) app.setupHint = reasons.find(r => isSetupReason(r, { keyProven }));
     else if (failureCounts(c.item.kind, { ...verdict, reasons })) {   // a transient YouTube error hides nothing (QA bug 4)
       // A song that fails hides only itself, never the whole Music page.
-      const failTitle = c.data.title.type === 'Music' ? c.item.videoId : c.data.title.id;
+      const failTitle = isColl(c) ? c.item.videoId : c.data.title.id;
       app.failed = recordFailure(app.failed, { titleId: failTitle, videoId: c.item.videoId, type: c.data.title.type }, reasons, Date.now(), { keyProven });
       await app.store.saveFailed(app.failed);
     }
@@ -437,8 +441,9 @@ export function createPlayUI(app) {
   // A song from the Music page or search (spec 4.11): straight into the YouTube player, its neighbours in the
   // page's order for next and the pause tiles; the song's title clip at the hand-off.
   function playSong(songId, from) {
-    const hid = app.hidden();
-    const data = musicData(app.catalogs, { hidden: new Set([...hid.titles, ...hid.videos]) });
+    const hid = app.hidden(), key = collectionOf(songId);
+    if (!key) return;
+    const data = collectionData(key, app.catalogs, { hidden: new Set([...hid.titles, ...hid.videos]) });
     const index = data.videos.findIndex(v => v.id === songId);
     if (index < 0) return;
     start({ data, videos: data.videos, index, from, fromKeep: true });

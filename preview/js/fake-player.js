@@ -40,7 +40,9 @@ export function createFakePlayer({ fake, ytContainer = null }) {
       // cfg.midAd {afterMs, ms}: an ad partway into the content (no 'ready' after it, only 'ad' false).
       if (yt && cfg.midAd) {
         later(loadMs + 10 + cfg.midAd.afterMs, () => { playing = false; adStart(); });
-        later(loadMs + 10 + cfg.midAd.afterMs + cfg.midAd.ms, () => { adEnd(); playing = true; });
+        // After it, like the real player: 'ad' false, then (once the content plays again, gapMs later) 'resumed'.
+        later(loadMs + 10 + cfg.midAd.afterMs + cfg.midAd.ms, adEnd);
+        later(loadMs + 10 + cfg.midAd.afterMs + cfg.midAd.ms + (cfg.midAd.gapMs ?? 300), () => { playing = true; emit('resumed'); });
       }
       if (adMs) {
         later(loadMs / 2, adStart);

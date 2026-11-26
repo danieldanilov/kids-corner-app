@@ -34,6 +34,7 @@
 [data-cat="bedtime"] { --c: var(--c-bedtime); --l: var(--l-bedtime); }
 [data-cat="youtube"] { --c: var(--c-youtube); --l: var(--l-youtube); }
 [data-cat="music"] { --c: var(--c-music); --l: var(--l-music); }
+[data-cat="learn"] { --c: var(--c-learn); --l: var(--l-learn); }
 [data-cat="stories"] { --c: var(--c-stories); --l: var(--l-stories); }
 [data-cat="russian"] { --c: var(--c-russian); --l: var(--l-russian); }
 [data-cat="british"] { --c: var(--c-british); --l: var(--l-british); }
@@ -94,8 +95,9 @@ svg { display: block; }
 .chip.srch { --c: var(--card); --l: var(--srch-lip); color: var(--ink); }
 .chip.srch .art svg { width: 64px; height: 64px; }
 .chip.srch .word { color: var(--ink); }
-.home-top .chip.srch { position: absolute; left: 1010px; top: 144px; }   /* spec 4.1 v6: (1042, 168), under the full header row */
-.home .lock { top: 312px; right: 32px; width: 52px; height: 52px; }   /* (1110, 312): under search, right-aligned with it */
+.home-top .chip[data-id="learn"] { position: absolute; left: 1010px; top: 144px; }   /* spec 4.1 v7: Learn at (1042, 168), under the full header row */
+.home-top .chip.srch { position: absolute; left: 1010px; top: 288px; }               /* search at (1042, 312), under Learn */
+.home .lock { top: 456px; right: 32px; width: 52px; height: 52px; }   /* (1110, 456): under search, right-aligned with it */
 .home .rows { right: 168px; }                                         /* rows end at x 1026, leaving that column free */
 .pom-tile, .chip { width: 120px; height: 128px; border-radius: 28px; }
 .pom-tile { display: grid; place-items: center; }
@@ -149,7 +151,7 @@ svg { display: block; }
 .pager { display: flex; gap: 16px; margin-left: auto; }
 .shelf { position: absolute; display: grid; grid-auto-flow: column; gap: 16px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .shelf::-webkit-scrollbar { display: none; }
-.shelf .partial { pointer-events: none; opacity: .45; transition: opacity 200ms; }
+.shelf .partial { pointer-events: none; }   /* a sliver under 120 px takes no taps (spec 4.2 v7) */
 .shelf-pad { width: 0; }
 .shelf-spacer { grid-row: 1 / -1; height: 1px; }
 /* Nothing shows in a shelf's side gutters, so a page edge never leaves a sliver of the next or last column. */
@@ -184,6 +186,13 @@ svg { display: block; }
 .ep-check .icon { width: 36px; height: 36px; }
 .again-btn { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; background: var(--c); color: #FFF7EA; box-shadow: 0 6px 0 var(--l), 0 0 0 6px #FFF7EA; display: grid; place-items: center; }
 .again-btn .icon { width: 64px; height: 64px; }
+/* Learn page (spec 4.12): one big door per subject, centred between the header and the bottom strip */
+.doors { position: absolute; left: 0; right: 0; top: 168px; bottom: 64px; display: flex; justify-content: center; align-items: center; gap: 40px; flex-wrap: wrap; }
+.door { width: 360px; height: 440px; border-radius: 36px; background: var(--card); box-shadow: 0 8px 0 var(--lip); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: var(--ink); }
+.door.pressed { box-shadow: 0 2px 0 var(--lip); }
+.door .art { width: 250px; height: 250px; border-radius: 32px; background: var(--c); display: grid; place-items: center; }
+.door .art svg { width: 190px; height: 190px; }
+.door .dname { font-size: 36px; font-weight: 900; }
 /* Music page (spec 4.11): divider columns and song thumbnails at the episode-tile size */
 .music-shelf { top: 168px; left: 0; right: 0; height: 500px; padding: 0 var(--gutter) 8px; scroll-padding-left: var(--gutter); grid-template-rows: repeat(2, 234px); grid-auto-columns: max-content; clip-path: inset(-12px var(--gutter) -12px var(--gutter)); }
 .mdiv { grid-row: 1 / -1; scroll-snap-align: start; width: 120px; border-radius: 22px; background: var(--paper-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 10px; text-align: center; color: var(--ink-2); font-size: 15px; line-height: 1.2; }
@@ -272,6 +281,7 @@ svg { display: block; }
 /* Position bar (4.6): 480 x 12, its top 120 px below the centre, time under it; paused only, never tappable. */
 .pos-bar { display: none; position: absolute; left: calc(50% - 240px); top: calc(50% + 120px); width: 480px; pointer-events: none; }
 #player.paused .pos-bar:not(.nodur) { display: block; }
+#player.ad-paused .rail-btn[data-r="back15"], #player.ad-paused .rail-btn[data-r="fwd15"], #player.ad-paused .skip-pop, #player.ad-paused .pos-bar { display: none; }   /* QA #14 */
 .pos-bar .trk { height: 12px; border-radius: 6px; background: rgba(255, 255, 255, .3); overflow: hidden; }
 .pos-bar .fil { height: 100%; width: 0; background: #fff; border-radius: 6px; transition: width .3s ease-out; }
 [data-motion="reduced"] .pos-bar .fil { transition: none; }
@@ -405,9 +415,11 @@ table.report tr.bad td { color: #B4552F; }
   :root { --gutter: 24px; }
   .lock { top: 18px; right: 24px; }
   .show-dots { top: 84px; right: 26px; }
-  .home-top { top: 84px; right: var(--gutter); display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }   /* 5 cells across 24-810, rows at y 84 and 224 */
+  .home-top { top: 84px; right: var(--gutter); display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }   /* 6 cells across 24-810, rows at y 84 and 224 */
   .home-top .pom-tile, .home-top .chip { width: auto; }
-  .home-top .chip.srch { position: static; }                       /* the last cell of row 2 */
+  .home-top .chip[data-id="learn"] { position: static; }           /* row 2, after British */
+  .home-top .chip.srch { position: static; grid-column: 6; }       /* the last cell of row 2, one empty cell before it */
+  .door { width: 340px; }
   .home .lock { top: 18px; right: 28px; width: 56px; height: 56px; }   /* (750, 18) */
   .home .rows { right: var(--gutter); }
   .sfield { left: 168px; }

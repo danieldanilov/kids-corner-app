@@ -24,6 +24,9 @@ const I = {
  next:`<svg viewBox="0 0 64 64"><path d="M16 16l24 16-24 16z" fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><rect x="44" y="14" width="8" height="36" rx="3" fill="currentColor"/></svg>`,
  again:`<svg viewBox="0 0 64 64"><path d="M49 34A17 17 0 1 1 43 21" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M49 27L36 25L46 14z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`,
  check:`<svg viewBox="0 0 64 64"><path d="M14 34l12 12 24-26" fill="none" stroke="#41A684" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ learn:`<svg viewBox="0 0 72 72"><rect x="8" y="34" width="56" height="28" rx="6" fill="#fff" stroke="#2B2541" stroke-width="3"/><path d="M22 34v28M36 34v28M50 34v28" stroke="#2B2541" stroke-width="2.5"/><rect x="18" y="34" width="7" height="16" rx="2" fill="#2B2541"/><rect x="32" y="34" width="7" height="16" rx="2" fill="#2B2541"/><rect x="46" y="34" width="7" height="16" rx="2" fill="#2B2541"/><g transform="rotate(-35 40 20)"><rect x="18" y="14" width="40" height="12" rx="3" fill="#FFD064" stroke="#2B2541" stroke-width="3"/><path d="M58 14l10 6-10 6z" fill="#F5C99B" stroke="#2B2541" stroke-width="3" stroke-linejoin="round"/></g></svg>`,
+ draw:`<svg viewBox="0 0 72 72"><rect x="10" y="14" width="44" height="46" rx="6" fill="#fff" stroke="#2B2541" stroke-width="3"/><path d="M18 46c6-12 12-12 16-4s10 6 14-6" fill="none" stroke="#E8736A" stroke-width="4" stroke-linecap="round"/><circle cx="24" cy="26" r="5" fill="#FFD064"/><g transform="rotate(-40 52 40)"><rect x="40" y="35" width="28" height="10" rx="3" fill="#7CC4F0" stroke="#2B2541" stroke-width="3"/><path d="M68 35l8 5-8 5z" fill="#F5C99B" stroke="#2B2541" stroke-width="3" stroke-linejoin="round"/></g></svg>`,
+ piano:`<svg viewBox="0 0 72 72"><rect x="6" y="18" width="60" height="38" rx="6" fill="#fff" stroke="#2B2541" stroke-width="3"/><path d="M18 18v38M30 18v38M42 18v38M54 18v38" stroke="#2B2541" stroke-width="2.5"/><rect x="14" y="18" width="7" height="22" rx="2" fill="#2B2541"/><rect x="26" y="18" width="7" height="22" rx="2" fill="#2B2541"/><rect x="50" y="18" width="7" height="22" rx="2" fill="#2B2541"/></svg>`,
  note:`<svg viewBox="0 0 72 72"><path d="M28 50V18l30-6v32" fill="none" stroke="#2B2541" stroke-width="5" stroke-linejoin="round"/><path d="M28 18l30-6v9l-30 6z" fill="#2B2541"/><ellipse cx="20" cy="52" rx="10" ry="8" fill="#fff" stroke="#2B2541" stroke-width="4"/><ellipse cx="50" cy="46" rx="10" ry="8" fill="#fff" stroke="#2B2541" stroke-width="4"/></svg>`,
  search:`<svg viewBox="0 0 64 64"><circle cx="27" cy="27" r="16" fill="#DDF1FF" stroke="currentColor" stroke-width="7"/><path d="M39 39l14 14" stroke="currentColor" stroke-width="9" stroke-linecap="round"/></svg>`,
  clear:`<svg viewBox="0 0 64 64"><path d="M20 20l24 24M44 20L20 44" stroke="currentColor" stroke-width="8" stroke-linecap="round"/></svg>`,
@@ -57,7 +60,9 @@ export function pom(mood = 'day', cls = '') {
   return pomSvg(`${m} ${cls}`.trim());
 }
 
-export const CHIP_ART = { shows: I.tv, movies: I.popcorn, bedtime: I.moon, youtube: I.yt, music: I.note, stories: I.book, russian: I.doll, british: I.bus };
+export const CHIP_ART = { shows: I.tv, movies: I.popcorn, bedtime: I.moon, youtube: I.yt, music: I.note, learn: I.learn, stories: I.book, russian: I.doll, british: I.bus };
+// Learn's subjects (spec 4.12): their pictures on the doors, the subject pages' chip and search tiles.
+export const SUBJECT_ART = { draw: I.draw, piano: I.piano };
 export const ROW_ART = { myshows: I.heart, keep: I.half, new: I.sprout, stories: I.book, sleepyshows: I.moon, sleepyvideos: I.yt };
 export const ROW_LABEL = { myshows: 'My shows', keep: 'Keep watching', new: 'New', stories: 'Stories', sleepyshows: 'Sleepy shows', sleepyvideos: 'Sleepy videos' };
 export const ICONS = Object.fromEntries(Object.entries({

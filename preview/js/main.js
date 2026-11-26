@@ -111,9 +111,10 @@ async function render() {
   if (app.settings.bedtime.oneStory && app.bedtime && u.goodnight) return renderGoodnight(view, app);
   if (!canStart(u, app.settings)) return renderRest(view, app);
   if (token !== renderToken) return;
-  if (parts[0] === 'c' && parts[1] === 'music' && app.bedtime) history.replaceState(null, '', '#/');   // Music is hidden at bedtime (spec 4.11)
-  else if (parts[0] === 'c' && parts[1]) return renderCategory(view, app, parts[1]);
-  if (parts[0] === 't' && parts[1] === 'Music') { app.go(app.bedtime ? '#/' : '#/c/music'); return; }   // a song has no page of its own
+  if (parts[0] === 'c' && (parts[1] === 'music' || parts[1] === 'learn') && app.bedtime) history.replaceState(null, '', '#/');   // Music and Learn are hidden at bedtime (4.11, 4.12)
+  else if (parts[0] === 'c' && parts[1]) return renderCategory(view, app, parts[1], parts[2]);
+  // A song or lesson has no page of its own: its collection's page (home at bedtime).
+  if (parts[0] === 't' && ['Music', 'Drawing', 'Piano'].includes(parts[1])) { app.go(app.bedtime ? '#/' : { Music: '#/c/music', Drawing: '#/c/learn/draw', Piano: '#/c/learn/piano' }[parts[1]]); return; }
   if (parts[0] === 't' && parts[1] && parts[2]) return renderTitle(view, app, parts[1], parts[2]);
   if (parts[0] === 's') {
     if (!app.bedtime) return renderSearch(view, app);      // already open (the magnifier's tap, or back from the player): kept as it is

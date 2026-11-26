@@ -200,7 +200,14 @@ export function createPlayUI(app) {
     on('paused', (d) => { autoHide.setPlaying(false); onPaused(my, d); });
     // Stalled more than 1 s (4.7): the controls show and stay, Pom breathes small bottom-right. YouTube buffers inside its own player.
     on('stalled', () => { if (my.item.kind === 'youtube') return; clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => { if (ctx === my) { layer.classList.add('stalled'); autoHide.setPlaying(false); } }, 1000); });
-    on('resumed', () => { clearTimeout(my.stallTimer); layer.classList.remove('stalled', 'needs-tap'); if (my.paused) { my.paused = false; endPause(); setRail(); } playingNow(my); });
+    // A 'resumed' while our pause screen is up never came from her: doResume() clears my.paused before it resumes. It
+    // is YouTube playing on after a pause it never took (a stall that cleared; review app-v9 S1, QA #20), so pause
+    // again and keep the screen. Nothing moves on by itself (spec 4.6, 4.9).
+    on('resumed', () => {
+      clearTimeout(my.stallTimer); layer.classList.remove('stalled');
+      if (my.paused) { my.session.pause(); return; }
+      layer.classList.remove('needs-tap'); playingNow(my);
+    });
     on('ended', (d) => onEnded(my, d));   // also YouTube failing in the last 15 s ({nearEnd:true}): watched, never the sleeping card (QA #19)
     on('needs-tap', () => showYouTubeOwn(my));
     // A tap on the playing YouTube video lands on the clear layer: pause through the session, as a touch on TorBox

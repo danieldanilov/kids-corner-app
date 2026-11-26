@@ -57,6 +57,21 @@ app.catOf = (id) => app.home[id] || null;
 app.speak = (key) => app.sound.say(key);
 app.effect = (name) => app.sound.effect(name);
 
+// Home is one iPad composition per orientation (spec 1, Window sizes): a 1194 x 834 (or 834 x 1194) frame, scaled
+// down to fit a narrower or shorter window and centred across its width. At the iPad's own size it is the window.
+export const HOME_FRAME = { landscape: [1194, 834], portrait: [834, 1194] };
+function fitHome() {
+  const root = document.documentElement;
+  const [fw, fh] = HOME_FRAME[matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape'];
+  const s = Math.min(1, innerWidth / fw, innerHeight / fh);   // a short window never cuts a row
+  root.style.setProperty('--home-scale', String(s));
+  root.style.setProperty('--home-left', `${Math.max(0, (innerWidth - fw * s) / 2)}px`);
+  root.classList.toggle('home-scaled', s < 1);
+}
+fitHome();
+addEventListener('resize', fitHome);
+addEventListener('orientationchange', fitHome);
+
 function applyLook() {
   const root = document.documentElement;
   root.dataset.theme = app.bedtime ? 'bedtime' : app.settings.theme === 'light' ? 'light' : 'dark';   // dark unless the grown-up chose Light

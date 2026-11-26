@@ -201,7 +201,7 @@ export function createPlayUI(app) {
     // Stalled more than 1 s (4.7): the controls show and stay, Pom breathes small bottom-right. YouTube buffers inside its own player.
     on('stalled', () => { if (my.item.kind === 'youtube') return; clearTimeout(my.stallTimer); my.stallTimer = setTimeout(() => { if (ctx === my) { layer.classList.add('stalled'); autoHide.setPlaying(false); } }, 1000); });
     on('resumed', () => { clearTimeout(my.stallTimer); layer.classList.remove('stalled', 'needs-tap'); if (my.paused) { my.paused = false; endPause(); setRail(); } playingNow(my); });
-    on('ended', () => onEnded(my));
+    on('ended', (d) => onEnded(my, d));   // also YouTube failing in the last 15 s ({nearEnd:true}): watched, never the sleeping card (QA #19)
     on('needs-tap', () => showYouTubeOwn(my));
     // A tap on the playing YouTube video lands on the clear layer: pause through the session, as a touch on TorBox
     // video does; the 'paused' that follows hides the frame and shows our overlay (4.5, 4.6).
@@ -370,14 +370,14 @@ export function createPlayUI(app) {
     app.go(c.returnTo);
   }
 
-  async function onEnded(c) {
+  async function onEnded(c, d = {}) {
     c.position = c.duration || c.position;
     await saveProgress(true);
     if (!isColl(c)) app.usage = recordEpisodeEnd(app.today());   // songs and lessons never count toward a show limit
     const oneStory = app.bedtime && app.settings.bedtime.oneStory;
     if (oneStory) app.usage = { ...app.usage, goodnight: true };
     await app.saveUsage();
-    logPlay({ endReason: 'ended' });
+    logPlay({ endReason: 'ended', ...(d.nearEnd ? { endedNearEnd: true, ytError: d.reason } : {}) });
     teardown();
     ctx = null; app.playing = false;
     const action = onEpisodeEnd(app.usage, app.settings);

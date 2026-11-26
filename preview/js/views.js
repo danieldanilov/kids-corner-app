@@ -349,6 +349,13 @@ function wireShelf(view, app) {
     shelf.scrollTo({ left: Math.max(0, target - pad), behavior: app.reduced() ? 'auto' : 'smooth' });
   };
   for (const b of [prev, next]) b.addEventListener('click', (e) => { e.stopPropagation(); app.effect('arrow'); pageTo(+b.dataset.page); });
+  // A rotation or window resize moves the edges without a scroll (QA #17): size the spacer and re-run the rule.
+  // The listener goes away with the shelf.
+  const onResize = () => {
+    if (!shelf.isConnected) { removeEventListener('resize', onResize); removeEventListener('orientationchange', onResize); return; }
+    cancelAnimationFrame(shelf._u); shelf._u = requestAnimationFrame(() => { sizeSpacer(); update(); });
+  };
+  addEventListener('resize', onResize); addEventListener('orientationchange', onResize);
   update();
   return { shelf, update };
 }

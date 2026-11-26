@@ -20,6 +20,7 @@ export const DEFAULTS = {
   warmMaxAgeMs: 30 * 60e3,
   ytEndGuardSec: 0.6,    // stop this close to the end so YouTube's end panel never shows
   ytNeedsTapMs: 2500,
+  ytNearEndSec: 15,      // a YouTube error this close to the end ends the video as watched ('ended' {nearEnd:true})
   ytShield: false,       // blocking layer over the YouTube player (Boss ruling 2026-11-25). Off until the app
                          // handles 'shield-tap': with it on, a tap no longer reaches YouTube (so no tap-to-pause)
   ytAdMute: true,        // mute while an ad plays; content always gets its sound back
@@ -268,7 +269,7 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       finished = true;
       rep.endReason = reason;
       if (reason === 'failed-all') { emit('failed-all', { reasons: extra || rep.failures, ...(more || {}) }); }
-      if (reason === 'ended') emit('ended', {});
+      if (reason === 'ended') emit('ended', more || {});
       if (!readyEmitted && reason === 'failed-all') report(false);
       report(true);
     };
@@ -584,15 +585,17 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     if (!yt) { rep.failures.push('no_yt_container'); queueMicrotask(() => finish('failed-all', ['no_yt_container'])); return; }
     let started = false, paused = false, endedByUs = false, stopping = false, lastSeek = null, seekRetried = false;
     let stallT = null, seekT = null, needsTapT = null, lastEmit = -1;
-    let ad = false, adStart = 0, needsTapShown = false, lastClock = null, seekOnMove = null, adPaused = false, errRetried = false, lastContent = startAt;
+    let ad = false, adStart = 0, needsTapShown = false, lastClock = null, seekOnMove = null, adPaused = false, errRetried = false, lastContent = startAt, pendingSeek = null;
     rep.ads = 0; rep.adSeconds = 0;
     yt.resetProgress();
     yt.shield(pol.shield);
     if (!pol.adMute) (mutedNow ? yt.mute() : yt.unMute()); // a stopped play leaves the host muted
     // Early mute, only where a mid-roll can start before YouTube says so: after a seek (ours, or a clock jump we
     // didn't make) until her video has played about a second at the new spot. Plain buffering never mutes.
-    let quietWin = null, lastSample = null;
-    const openQuiet = to => { quietWin = { to, base: null }; };
+    // The window counts from wherever YouTube actually landed (the first PLAYING after it moved or buffered), and
+    // closes after about 3 s of her video playing whatever the clock says. Any ad clears it, start or end.
+    let quietWin = null, lastPlaying = null, jumpGraceUntil = 0;
+    const openQuiet = (to, landed = false) => { quietWin = { to, from: yt.time(), base: landed ? to : null, moved: landed, playMs: 0, at: null }; };
     const applyPolicy = () => {
       const st = yt.state(), t = yt.time();
       const clockRunning = lastClock != null && t > lastClock + 0.05;
@@ -600,8 +603,12 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       const nowAd = !endedByUs && classifyAd({ state: st, contentDuration: yt.duration(), progress: yt.progress(), clockRunning });
       if (nowAd !== ad) {
         ad = nowAd;
-        if (ad) { adStart = performance.now(); rep.ads++; clearT(); quietWin = null; if (!paused && !adPaused) yt.show(true); } // the buffering before an ad is no stall; the ad itself is muted
-        else { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); adPaused = false; }
+        quietWin = null; lastPlaying = null; jumpGraceUntil = performance.now() + 1500; // YouTube's clock is the ad's for a moment either side
+        if (ad) { adStart = performance.now(); rep.ads++; clearT(); if (!paused && !adPaused) yt.show(true); } // the buffering before an ad is no stall; the ad itself is muted
+        else {
+          rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); adPaused = false;
+          if (pendingSeek != null && !paused) { const to = pendingSeek; pendingSeek = null; queueMicrotask(() => { if (!stopping) seekNow(to); }); } // ±15 pressed during the ad
+        }
         emit('ad', { active: ad });
         // YouTube can report PLAYING before its last ad message is replaced: re-read the state once the ad clears.
         if (!ad) queueMicrotask(() => { if (!stopping) onStateImpl(yt.state()); });
@@ -609,15 +616,24 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       // A clock jump we didn't make (a seek inside YouTube's frame): forward by more than the time passed plus 2 s,
       // or back by more than 2 s, between two samples of her video playing.
       const now = performance.now();
-      if (started && !ad && !paused && !endedByUs && lastSample && lastSample.st === YT_STATE.PLAYING && !quietWin) {
-        const passed = (now - lastSample.at) / 1000;
-        if (t - lastSample.t > passed + 2 || lastSample.t - t > 2) openQuiet(t);
+      const contentPlaying = !ad && st === YT_STATE.PLAYING && yt.progress()?.allowSeeking !== false;
+      // Checked on every sample, buffering included: after a jump to an ad point YouTube can go from buffering
+      // straight into the ad, with no PLAYING at the new spot to wait for.
+      if (started && !ad && !paused && !endedByUs && !quietWin && now > jumpGraceUntil && lastPlaying && st !== YT_STATE.ENDED) {
+        const passed = (now - lastPlaying.at) / 1000;
+        if (t - lastPlaying.t > passed + 2 || lastPlaying.t - t > 2) openQuiet(t, contentPlaying);
       }
-      lastSample = ad || paused ? null : { t, at: now, st };
-      // The seek window closes once her video (not an ad) has played about a second at the new spot.
-      if (quietWin && !ad && st === YT_STATE.PLAYING && yt.progress()?.allowSeeking !== false) {
-        if (quietWin.base == null) { if (Math.abs(t - quietWin.to) < 2.5) quietWin.base = t; } // counted from the new spot
-        else if (t - quietWin.base >= 1) quietWin = null;
+      lastPlaying = contentPlaying && !paused ? { t, at: now } : ad || paused ? null : lastPlaying;
+      // The seek window closes once her video (not an ad) has played about a second where YouTube landed, and in any
+      // case after about 3 s of her video playing.
+      if (quietWin) {
+        if (st !== YT_STATE.PLAYING || Math.abs(t - quietWin.from) > 1) quietWin.moved = true;
+        if (contentPlaying) {
+          if (quietWin.at != null) quietWin.playMs += now - quietWin.at;
+          quietWin.at = now;
+          if (quietWin.base == null && quietWin.moved) quietWin.base = t;
+          if ((quietWin.base != null && t - quietWin.base >= 1) || quietWin.playMs >= 3000) quietWin = null;
+        } else quietWin.at = null;
       }
       // Once her video has started, YouTube reporting unstarted or cued is a mid-roll starting before its first
       // message says so; so is anything inside a seek window. Muting at once keeps the ad silent from its first frame.
@@ -675,6 +691,15 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       onError(code) {
         yt.show(false); clearT();
         const kind = classifyYtError(code);
+        // In the last seconds of her video an error is the end, not a failure: the app shows its goodbye, as watched.
+        const d = yt.duration();
+        if (started && d > 0 && lastContent >= d - o.ytNearEndSec && !stopping && !endedByUs) {
+          endedByUs = true; yt.show(false); yt.pause();
+          if (ad) { rep.adSeconds = Math.round(rep.adSeconds + (performance.now() - adStart) / 1000); ad = false; adPaused = false; emit('ad', { active: false }); }
+          rep.ytError = { code, kind }; rep.endedNearEnd = true;
+          finish('ended', null, { nearEnd: true, reason: 'yt_' + code, kind, code });
+          return;
+        }
         // A passing fault (error 5: often a mid-roll that failed to load) is retried once, from where her video was.
         if (kind === 'transient' && !errRetried && !stopping && !endedByUs) {
           errRetried = true; rep.ytRetries = (rep.ytRetries || 0) + 1;
@@ -722,11 +747,10 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
     };
     s._ctl.inAd = () => ad;
     s._ctl.duration = () => yt.duration();
-    const seekNow = t => { lastSeek = t; seekRetried = false; clearTimeout(seekT); seekT = null; if (started) { openQuiet(t); applyPolicy(); } yt.seek(t); };
+    const seekNow = t => { lastSeek = t; lastContent = t; seekRetried = false; clearTimeout(seekT); seekT = null; if (started) { openQuiet(t); applyPolicy(); } yt.seek(t); };
     // A seek while paused (the app's +15/-15 live on its pause screen) is held and made at resume: YouTube may
     // ignore a seek on a paused player, or start playing on it, and either would lose the jump or our pause screen.
     // At resume it is made once YouTube is moving again (buffering or playing), since a paused player may ignore it.
-    let pendingSeek = null;
     // After our own end nothing may play again: the end panel would be one frame away.
     s._ctl.resume = () => {
       if (endedByUs) return;
@@ -734,8 +758,10 @@ export function createPlayer({ video, ytContainer, audio, workerUrl, getSecrets,
       if (pendingSeek != null) { seekOnMove = pendingSeek; pendingSeek = null; }
       yt.play();
     };
-    s._ctl.seek = t => { if (paused && !endedByUs) { pendingSeek = t; return; } seekNow(t); };
-    s._ctl.position = () => seekOnMove ?? pendingSeek ?? yt.time();
+    // During an ad (playing or paused) YouTube's clock is the ad's and it won't seek: hold the jump, from her video's
+    // spot, and make it when the ad is over.
+    s._ctl.seek = t => { if ((paused || ad) && !endedByUs) { pendingSeek = t; return; } seekNow(t); };
+    s._ctl.position = () => (ad ? pendingSeek ?? lastContent : seekOnMove ?? pendingSeek ?? yt.time());
     ytBusy = true;
     const host = yt;
     cleanup(() => {

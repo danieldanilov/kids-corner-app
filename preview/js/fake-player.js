@@ -57,6 +57,13 @@ export function createFakePlayer({ fake, ytContainer = null }) {
           pos += 0.5;
           emit('time', { position: pos, duration: lengthS });
           if (pos >= lengthS) { clearInterval(tick); playing = false; emit('ended'); }
+          // cfg.nearEndFail {atS, ad, code}: YouTube fails within 15 s of the end (player contract): an open ad is
+          // closed first, then 'ended' {nearEnd:true, reason, kind, code}; nothing is retried.
+          else if (yt && cfg.nearEndFail && pos >= cfg.nearEndFail.atS) {
+            clearInterval(tick); playing = false;
+            const code = cfg.nearEndFail.code ?? 5, end = () => emit('ended', { nearEnd: true, reason: `yt_${code}`, kind: code === 5 ? 'transient' : 'gone', code });
+            if (cfg.nearEndFail.ad) { adStart(); later(1500, () => { adEnd(); later(200, end); }); } else end();
+          }
         }, 500);
         timers.push(tick);
       });

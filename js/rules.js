@@ -231,3 +231,25 @@ export function ytSigninStatus({ plays = [], attempt = null, signInOn = false })
   // "Probably yes" only after a few ad-free plays (review app-v6 S2): one or two prove little.
   return { state: seen.length >= YT_SIGNIN_PROOF ? 'likely' : 'unknown', plays: seen.length, withAds: 0 };
 }
+
+// Every screen (Daniel 2026-11-27). The UI is drawn for a composition and zoomed by `scale` to the window:
+// - her iPad's own compositions, 1194 x 774 landscape and 834 x 1054 portrait (the height the home rows need), fill
+//   the window at exactly 1 (within 2% when the window is at least as wide, so a status bar never resamples it, and
+//   a window a few points narrower is zoomed down rather than squeezing the chips);
+// - a phone held upright (narrower than 600) gets the phone composition, PHONE_WIDTH wide, with its own home grid;
+// - anything else (a phone on its side, a laptop, a big screen) gets the iPad composition scaled to fit, up to 2x,
+//   drawn at the window's own shape, so rows run wider and show more posters.
+export const PHONE_WIDTH = 667;
+export function stageFor(w, h) {
+  const portrait = h > w;
+  if (portrait && w < 600) return { scale: w / PHONE_WIDTH, phone: true, portrait };
+  const [fw, need] = portrait ? [834, 1054] : [1194, 774];
+  let scale = Math.min(w / fw, h / need, 2);
+  if (scale > 0.98 && scale < 1.02 && w >= fw) scale = 1;
+  return { scale, phone: false, portrait };
+}
+// Posters a home row holds, the sign not counted, for the drawn width: landscape rows run from the gutter to 168 px
+// short of the right edge (124 px posters, 16 px gaps); portrait rows span the gutters (136 px posters, 20 px gaps).
+export function homeSlots(width, portrait) {
+  return portrait ? Math.max(2, Math.floor((width - 48 + 20) / 156) - 1) : Math.max(3, Math.floor((width - 200 + 16) / 140) - 1);
+}

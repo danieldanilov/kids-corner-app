@@ -1,6 +1,6 @@
 // Her screens: home, category, show/movie/channel pages, rest, good night, the how-many picker (spec 4, 8).
 import { CATEGORIES, BEDTIME_ROWS, kindOf, collectionData, collectionOf, isCollectionId, songThumb, COLLECTIONS, SUBJECTS } from './data.js';
-import { keepWatching, myShows, isFinished, showsAllowed, starterShows, newTitles } from './rules.js';
+import { keepWatching, myShows, isFinished, showsAllowed, starterShows, newTitles, homeSlots } from './rules.js';
 import { pom, CHIP_ART, SUBJECT_ART, ROW_ART, ROW_LABEL, ICONS, CUSHION } from './art.js';
 import { groupResults } from './search.js';
 
@@ -48,7 +48,7 @@ function findMeta(app, id) {
 // ---------- home ----------
 export async function renderHome(view, app, { announceBedtime = false } = {}) {
   const hidden = app.hidden().titles;
-  const slots = portrait() ? 4 : 6;   // spec 4.1 v6: rows end at x 1026 in landscape
+  const slots = homeSlots(app.stageW || innerWidth, portrait());   // 6 / 4 on her iPad (spec 4.1 v6), more on wider windows, 3 on a phone
   let rows;
   if (app.bedtime) {
     rows = BEDTIME_ROWS.map(r => ({ key: r.key, sign: r.sign, items: (app.catalogs[`${r.type}/${r.id}`] || []).filter(m => !hidden.has(m.id)).map(m => ({ t: m })) }));
@@ -316,10 +316,13 @@ function wireShelf(view, app) {
     prev.classList.toggle('inert', atStart); next.classList.toggle('inert', atEnd);
     prev.disabled = atStart; next.disabled = atEnd;
     // The visible page is the shelf minus its side gutters, so a poster peeking into a gutter counts as cut.
-    const sr = shelf.getBoundingClientRect(), padR = parseFloat(getComputedStyle(shelf).paddingRight) || 0;
-    const lo = sr.left + pad - 1, hi = Math.min(sr.right, innerWidth) - padR + 1;
+    // Measured in drawn px: screen rects are divided by the UI zoom (1 on her iPad), so padding and 120 px compare alike.
+    const u = app.stageW ? innerWidth / app.stageW : 1;
+    const box = (e) => { const r = e.getBoundingClientRect(); return { left: r.left / u, right: r.right / u }; };
+    const sr = box(shelf), padR = parseFloat(getComputedStyle(shelf).paddingRight) || 0;
+    const lo = sr.left + pad - 1, hi = Math.min(sr.right, innerWidth / u) - padR + 1;
     // Spec 4.2 v7: a tile with less than 120 px showing at either edge takes no taps until it scrolls into view.
-    for (const t of tiles()) { const r = t.getBoundingClientRect(); const shown = Math.min(r.right, hi) - Math.max(r.left, lo); t.classList.toggle('partial', shown < 120 && (r.left < lo || r.right > hi)); }
+    for (const t of tiles()) { const r = box(t); const shown = Math.min(r.right, hi) - Math.max(r.left, lo); t.classList.toggle('partial', shown < 120 && (r.left < lo || r.right > hi)); }
   };
   shelf.addEventListener('scroll', () => { cancelAnimationFrame(shelf._u); shelf._u = requestAnimationFrame(update); }, { passive: true });
   // Page by whole columns: next starts at the first column cut by the right edge; back ends where this page began.
